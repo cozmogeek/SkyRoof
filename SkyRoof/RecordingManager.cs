@@ -352,8 +352,8 @@ namespace SkyRoof
       if (audioBuffer == null)
         throw new InvalidOperationException("No audio data available for MP3 export");
 
-      const int targetSampleRate = 16000;
-      const int targetBitrate = 24000;
+      const int targetSampleRate = 44100;
+      const int targetBitrate = 128000;
 
       short[] pcm = new short[samplesInBuffer];
       for (int i = 0; i < samplesInBuffer; i++)
