@@ -32,6 +32,7 @@
       System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
       Toolbar = new Panel();
       RotatorWidget = new RotatorWidget();
+      SatellitePhotoWidget = new SatellitePhotoWidget();
       panel7 = new Panel();
       GainWidget = new GainWidget();
       panel3 = new Panel();
@@ -121,6 +122,7 @@
       Toolbar.Controls.Add(panel3);
       Toolbar.Controls.Add(FrequencyWidget);
       Toolbar.Controls.Add(panel1);
+      Toolbar.Controls.Add(SatellitePhotoWidget);
       Toolbar.Controls.Add(SatelliteSelecionWidget);
       Toolbar.Controls.Add(ClockPanel);
       Toolbar.Controls.Add(panel2);
@@ -140,6 +142,14 @@
       RotatorWidget.Size = new Size(210, 78);
       RotatorWidget.TabIndex = 8;
       // 
+      // SatellitePhotoWidget
+      // 
+      SatellitePhotoWidget.BorderStyle = BorderStyle.FixedSingle;
+      SatellitePhotoWidget.Dock = DockStyle.Left;
+      SatellitePhotoWidget.Location = new Point(4, 0);
+      SatellitePhotoWidget.Name = "SatellitePhotoWidget";
+      SatellitePhotoWidget.Size = new Size(90, 78);
+      SatellitePhotoWidget.TabIndex = 11;
       // 
       // panel7
       // 
