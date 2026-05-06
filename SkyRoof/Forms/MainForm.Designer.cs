@@ -32,6 +32,8 @@
       System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
       Toolbar = new Panel();
       RotatorWidget = new RotatorWidget();
+      AutoMonitorBannerWidget = new AutoMonitorBannerWidget();
+      SatellitePhotoWidget = new SatellitePhotoWidget();
       panel7 = new Panel();
       GainWidget = new GainWidget();
       panel3 = new Panel();
@@ -51,6 +53,7 @@
       GroupViewPanelMNU = new ToolStripMenuItem();
       GroupViewMNU = new ToolStripMenuItem();
       SatelliteDetailsMNU = new ToolStripMenuItem();
+      MonitoredSatellitesMNU = new ToolStripMenuItem();
       TransmittersMNU = new ToolStripMenuItem();
       SatellitePassesMNU = new ToolStripMenuItem();
       WaterfallMNU = new ToolStripMenuItem();
@@ -121,9 +124,11 @@
       Toolbar.Controls.Add(panel3);
       Toolbar.Controls.Add(FrequencyWidget);
       Toolbar.Controls.Add(panel1);
+      Toolbar.Controls.Add(SatellitePhotoWidget);
       Toolbar.Controls.Add(SatelliteSelecionWidget);
       Toolbar.Controls.Add(ClockPanel);
       Toolbar.Controls.Add(panel2);
+      Toolbar.Controls.Add(AutoMonitorBannerWidget);
       Toolbar.Controls.Add(panel5);
       Toolbar.Dock = DockStyle.Top;
       Toolbar.Location = new Point(0, 24);
@@ -139,6 +144,25 @@
       RotatorWidget.Name = "RotatorWidget";
       RotatorWidget.Size = new Size(210, 78);
       RotatorWidget.TabIndex = 8;
+      // 
+      // SatellitePhotoWidget
+      // 
+      SatellitePhotoWidget.BorderStyle = BorderStyle.FixedSingle;
+      SatellitePhotoWidget.Dock = DockStyle.Left;
+      SatellitePhotoWidget.Location = new Point(4, 0);
+      SatellitePhotoWidget.Name = "SatellitePhotoWidget";
+      SatellitePhotoWidget.Size = new Size(90, 78);
+      SatellitePhotoWidget.TabIndex = 11;
+      // 
+      // AutoMonitorBannerWidget
+      // 
+      AutoMonitorBannerWidget.BorderStyle = BorderStyle.FixedSingle;
+      AutoMonitorBannerWidget.Dock = DockStyle.Left;
+      AutoMonitorBannerWidget.Location = new Point(94, 0);
+      AutoMonitorBannerWidget.Name = "AutoMonitorBannerWidget";
+      AutoMonitorBannerWidget.Size = new Size(420, 78);
+      AutoMonitorBannerWidget.TabIndex = 12;
+      AutoMonitorBannerWidget.Visible = false;
       // 
       // panel7
       // 
@@ -281,7 +305,7 @@
       // 
       // GroupViewPanelMNU
       // 
-      GroupViewPanelMNU.DropDownItems.AddRange(new ToolStripItem[] { GroupViewMNU, SatelliteDetailsMNU, TransmittersMNU, SatellitePassesMNU, WaterfallMNU, TimelineMNU, SkyViewMNU, EarthViewMNU, QsoEntryMNU, Ft4ConsoleMNU, RecorderMNU, toolStripMenuItem4, ResetWindowLayoutMNU });
+      GroupViewPanelMNU.DropDownItems.AddRange(new ToolStripItem[] { GroupViewMNU, SatelliteDetailsMNU, MonitoredSatellitesMNU, TransmittersMNU, SatellitePassesMNU, WaterfallMNU, TimelineMNU, SkyViewMNU, EarthViewMNU, QsoEntryMNU, Ft4ConsoleMNU, RecorderMNU, toolStripMenuItem4, ResetWindowLayoutMNU });
       GroupViewPanelMNU.Name = "GroupViewPanelMNU";
       GroupViewPanelMNU.Size = new Size(44, 20);
       GroupViewPanelMNU.Text = "View";
@@ -299,6 +323,13 @@
       SatelliteDetailsMNU.Size = new Size(194, 22);
       SatelliteDetailsMNU.Text = "Satellite Details";
       SatelliteDetailsMNU.Click += SatelliteDetailsMNU_Click;
+      // 
+      // MonitoredSatellitesMNU
+      // 
+      MonitoredSatellitesMNU.Name = "MonitoredSatellitesMNU";
+      MonitoredSatellitesMNU.Size = new Size(194, 22);
+      MonitoredSatellitesMNU.Text = "&Monitored Satellites";
+      MonitoredSatellitesMNU.Click += MonitoredSatellitesMNU_Click;
       // 
       // TransmittersMNU
       // 
@@ -800,6 +831,7 @@
     public ToolStripMenuItem WaterfallMNU;
     public ToolStripMenuItem GroupViewMNU;
     public ToolStripMenuItem SatelliteDetailsMNU;
+    public ToolStripMenuItem MonitoredSatellitesMNU;
     public ToolStripMenuItem SatellitePassesMNU;
     private System.Windows.Forms.Timer timer;
     public ToolStripMenuItem TimelineMNU;
@@ -834,6 +866,8 @@
     private ToolStripStatusLabel RxCatLedLabel;
     private ToolStripStatusLabel RxCatStatusLabel;
     private RotatorWidget RotatorWidget;
+    public SatellitePhotoWidget SatellitePhotoWidget;
+    public AutoMonitorBannerWidget AutoMonitorBannerWidget;
     private Panel panel5;
     private Panel panel4;
     private ToolStripStatusLabel RotatorLedLabel;

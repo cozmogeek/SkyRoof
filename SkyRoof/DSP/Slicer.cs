@@ -14,6 +14,9 @@ namespace SkyRoof
     private static readonly int[] Bandwidths = [2800, 2800, 5000, 5000, 500, 16000, 48000];
     private static readonly int[] ModeOffsets = [1600, -1600, 2500, -2500, 600, 0, 0];
 
+    /// <summary>Extra linear gain for CW on top of the SSB-style Real×3 path (narrow filter / lower level vs FM).</summary>
+    private const float CwAudioGain = 12f;
+
     private const int STOPBAND_REJECTION_DB = 80;
     private const double USEFUL_BANDWIDTH = 0.95 * SdrConst.AUDIO_SAMPLING_RATE / 2; // 22 kHz useful at 48 KHz sampling rate
     
@@ -242,9 +245,10 @@ namespace SkyRoof
           NativeLiquidDsp.nco_crcf_mix_block_up(SecondMixer, pData, pData, (uint)outputCount);
         }
 
-        // return the real part
+        // return the real part (CW is boosted — narrow bandwidth + same scaling as SSB reads quiet vs FM)
+        float reelScale = CurrentMode == Mode.CW ? 3f * CwAudioGain : 3f;
         for (int i = 0; i < outputCount; i++)
-          audioArgs.Data[i] = RationalResamplerOutputBuffer.Data[i].Real * 3;
+          audioArgs.Data[i] = RationalResamplerOutputBuffer.Data[i].Real * reelScale;
       }
 
       // return audio data

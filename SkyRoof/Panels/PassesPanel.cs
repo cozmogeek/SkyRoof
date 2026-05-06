@@ -86,6 +86,41 @@ namespace SkyRoof
         ctx.SatelliteSelector.SetSelectedSatellite(sat);
         ctx.SatelliteSelector.SetSelectedPass(pass);
       }
+      else if (item != null && e.Button == MouseButtons.Right)
+      {
+        // ensure context menu applies to the row that was right-clicked
+        listViewEx1.SelectedIndices.Clear();
+        item.Selected = true;
+      }
+    }
+
+    private void contextMenuStrip1_Opening(object sender, System.ComponentModel.CancelEventArgs e)
+    {
+      if (listViewEx1.SelectedIndices.Count == 0) { e.Cancel = true; return; }
+
+      var pass = (SatellitePass)Items[listViewEx1.SelectedIndices[0]].Tag!;
+      bool monitored = ctx.Settings.Satellites.MonitoredSatelliteIds.Contains(pass.Satellite.sat_id);
+      MonitorSatelliteMNU.Text = monitored ? "Unmonitor Satellite" : "Monitor Satellite";
+    }
+
+    private void MonitorSatelliteMNU_Click(object sender, EventArgs e)
+    {
+      if (listViewEx1.SelectedIndices.Count == 0) return;
+      var pass = (SatellitePass)Items[listViewEx1.SelectedIndices[0]].Tag!;
+      ToggleMonitored(pass.Satellite);
+    }
+
+    private void ToggleMonitored(SatnogsDbSatellite sat)
+    {
+      var ids = ctx.Settings.Satellites.MonitoredSatelliteIds;
+      if (ids.Contains(sat.sat_id))
+        ids.RemoveAll(id => id == sat.sat_id);
+      else
+        ids.Add(sat.sat_id); // add as lowest priority
+
+      ctx.Settings.SaveToFile();
+      ctx.MonitoredPasses?.FullRebuild();
+      ctx.MonitoredSatellitesPanel?.RefreshList();
     }
 
 

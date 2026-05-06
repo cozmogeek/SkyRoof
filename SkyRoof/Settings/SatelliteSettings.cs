@@ -46,6 +46,23 @@ namespace SkyRoof
     public string SelectedGroupId;
     public string SelectedSatelliteId;
 
+    /// <summary>
+    /// Satellite IDs selected for monitoring, ordered by priority (index 0 = highest).
+    /// </summary>
+    public List<string> MonitoredSatelliteIds = new();
+
+    /// <summary>
+    /// When enabled, SkyRoof automatically selects the highest-priority monitored satellite
+    /// during an active pass (and applies its last-selected transmitter).
+    /// </summary>
+    public bool AutoMonitorEnabled = false;
+
+    /// <summary>
+    /// Minimum pass max elevation (degrees) required before auto-monitoring will switch away
+    /// from a higher-priority satellite to a lower-priority one.
+    /// </summary>
+    public int AutoMonitorMinElevationDeg = 0;
+
     public void DeleteInvalidData(SatnogsDb db)
     {
       // remove deleted sats
@@ -86,6 +103,11 @@ namespace SkyRoof
       foreach (var group in SatelliteGroups)
         if (string.IsNullOrEmpty(group.SelectedSatId) || !group.SatelliteIds.Contains(group.SelectedSatId))
           group.SelectedSatId = group.SatelliteIds[0];
+
+      // remove monitored sats not present in any data (will be pruned later when db is available)
+      MonitoredSatelliteIds = MonitoredSatelliteIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+
+      AutoMonitorMinElevationDeg = Math.Max(0, Math.Min(90, AutoMonitorMinElevationDeg));
     }
   }
 
@@ -105,6 +127,11 @@ namespace SkyRoof
     public string? Name;
     public string? SelectedTransmitterId;
 
+    /// <summary>
+    /// Recording preference for auto-recording when this satellite is selected/auto-selected.
+    /// </summary>
+    public AutoRecordMode AutoRecordMode = AutoRecordMode.Off;
+
     public bool DownlinkDopplerCorrectionEnabled = true;
     public bool DownlinkManualCorrectionEnabled = true;
     public int DownlinkManualCorrection;
@@ -112,6 +139,13 @@ namespace SkyRoof
     public bool UplinkDopplerCorrectionEnabled = true;
     public bool UplinkManualCorrectionEnabled = true;
     public int UplinkManualCorrection;
+  }
+
+  public enum AutoRecordMode
+  {
+    Off = 0,
+    Audio = 1,
+    Iq = 2,
   }
 
   public class TransmitterCustomization

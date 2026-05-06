@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -118,6 +118,25 @@ namespace SkyRoof
       return ctx.SatnogsDb.Satellites.Where(sat =>
         sat.Transmitters.Any(tx => tx.DownlinkLow >= StartFrequency) &&
         sat.Transmitters.Any(tx => tx.DownlinkLow <= EndFrequency));
+    }
+  }
+
+
+  //----------------------------------------------------------------------------------------------
+  //                              MonitoredSatellitePasses
+  //----------------------------------------------------------------------------------------------
+  public class MonitoredSatellitePasses : SatellitePasses
+  {
+    public MonitoredSatellitePasses(Context ctx) : base(ctx)
+    {
+      PredictionTimeSpan = TimeSpan.FromDays(2);
+    }
+
+    protected override IEnumerable<SatnogsDbSatellite> ListSatellites()
+    {
+      var ids = ctx.Settings.Satellites.MonitoredSatelliteIds;
+      if (ids == null || ids.Count == 0) return Array.Empty<SatnogsDbSatellite>();
+      return ids.Select(id => ctx.SatnogsDb.GetSatellite(id)).Where(s => s != null)!;
     }
   }
 

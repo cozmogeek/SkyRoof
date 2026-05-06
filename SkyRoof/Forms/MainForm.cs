@@ -27,12 +27,16 @@ namespace SkyRoof
       ctx.SatelliteSelector = SatelliteSelecionWidget;
       ctx.FrequencyControl = FrequencyWidget;
       ctx.RotatorControl = RotatorWidget;
+      ctx.SatellitePhotoWidget = SatellitePhotoWidget;
+      ctx.AutoMonitorBannerWidget = AutoMonitorBannerWidget;
       SatelliteSelecionWidget.ctx = ctx;
       FrequencyWidget.ctx = ctx;
       GainWidget.ctx = ctx;
       ctx.Announcer.ctx = ctx;
       ctx.CatControl.ctx = ctx;
       ctx.RotatorControl.ctx = ctx;
+      SatellitePhotoWidget.ctx = ctx;
+      AutoMonitorBannerWidget.ctx = ctx;
       ctx.AmsatStatusLoader.ctx = ctx;
       ctx.UdpStreamSender.ctx = ctx;
 
@@ -40,9 +44,14 @@ namespace SkyRoof
 
       EnsureUserDetails();
 
+      // Always start with auto tuning disabled for this session (do not persist).
+      ctx.Settings.Satellites.AutoMonitorEnabled = false;
+
       ctx.GroupPasses = new(ctx);
       ctx.HamPasses = new(ctx);
       ctx.SdrPasses = new(ctx);
+      ctx.MonitoredPasses = new(ctx);
+      ctx.AutoRecorder = new AutoRecorder(ctx);
       ctx.LoggerInterface = new(ctx);
 
       timer.Interval = 1000 / TICKS_PER_SECOND;
@@ -55,6 +64,9 @@ namespace SkyRoof
       ApplyOutputStreamSettings();
       ctx.CatControl.ApplySettings();
       ctx.RotatorControl.ApplySettings();
+
+      Resize += (s, e) => UpdateSatellitePhotoVisibility();
+      UpdateSatellitePhotoVisibility();
     }
 
     private void MainForm_Load(object sender, EventArgs e)
@@ -68,12 +80,19 @@ namespace SkyRoof
       Clock.UtcMode = ctx.Settings.Ui.ClockUtcMode;
 
       StartSdrIfEnabled();
+      UpdateAutoMonitorBannerVisibility();
+      ctx.MonitoredSatellitesPanel?.SyncAutoMonitorControlsFromSettings();
 
       VersionChecker = new VersionChecker(ctx.Settings.LatestVersion);
       VersionChecker.UpdateAvailable += UpdateAvailable_handler;
       VersionChecker.CheckVersionAsync().DoNotAwait();
 
       ctx.AmsatStatusLoader.GetStatusesAsync().DoNotAwait();
+    }
+
+    public void UpdateAutoMonitorBannerVisibility()
+    {
+      AutoMonitorBannerWidget?.SyncFromSettings();
     }
 
     private void UpdateAvailable_handler(object? sender, EventArgs e)
@@ -219,8 +238,12 @@ namespace SkyRoof
     {
       if (ctx.RecorderPanel?.isPlayingBack == true) return;
 
-      ApplyIqOutputStreamGainAndRoute(e.Data, e.Count);
+      // Record/playback taps should use the same pre-gain samples.
       ctx.RecorderPanel?.AddIqSamples(e);
+      ctx.AutoRecorder?.AddIqSamples(e.Data, e.Count);
+
+      // Output-stream routing applies gain; don't mutate the shared buffer used by recording/playback.
+      ApplyIqOutputStreamGainAndRoute(e.Data, e.Count);
     }
 
     private void Slicer_AudioDataAvailable(object? sender, DataEventArgs<float> e)
@@ -231,30 +254,44 @@ namespace SkyRoof
 
       ctx.SpeakerSoundcard.AddSamples(e.Data, 0, e.Count);
 
-      ApplyAudioOutputStreamGainAndRoute(e.Data, e.Count);
+      // Record/playback taps should use the same pre-gain samples.
       ctx.RecorderPanel?.AddAudioSamples(e);
+      ctx.AutoRecorder?.AddAudioSamples(e.Data, e.Count);
+
+      // Output-stream routing applies gain; don't mutate the shared buffer used by recording/playback.
+      ApplyAudioOutputStreamGainAndRoute(e.Data, e.Count);
     }
 
     private void ApplyAudioOutputStreamGainAndRoute(float[] data, int count)
     {
       float gain = Dsp.FromDb2(ctx.Settings.OutputStream.Gain);
-      for (int i = 0; i < count; i++) data[i] *= gain;
+      if (count <= 0) return;
+
+      // Copy to avoid mutating the shared slicer buffer (used by speaker + recording).
+      float[] streamData = new float[count];
+      Array.Copy(data, 0, streamData, 0, count);
+      for (int i = 0; i < count; i++) streamData[i] *= gain;
 
       if (ctx.Settings.OutputStream.Type == DataStreamType.AudioToVac)
-        ctx.AudioVacSoundcard.AddSamples(data, 0, count);
+        ctx.AudioVacSoundcard.AddSamples(streamData, 0, count);
       else if (ctx.Settings.OutputStream.Type == DataStreamType.AudioToUdp)
-        ctx.UdpStreamSender.Send(data, count);
+        ctx.UdpStreamSender.Send(streamData, count);
     }
 
     private void ApplyIqOutputStreamGainAndRoute(Complex32[] data, int count)
     {
       float gain = Dsp.FromDb2(ctx.Settings.OutputStream.Gain);
-      for (int i = 0; i < count; i++) data[i] *= gain;
+      if (count <= 0) return;
+
+      // Copy to avoid mutating the shared slicer buffer (used by recording/playback).
+      Complex32[] streamData = new Complex32[count];
+      Array.Copy(data, 0, streamData, 0, count);
+      for (int i = 0; i < count; i++) streamData[i] *= gain;
 
       if (ctx.Settings.OutputStream.Type == DataStreamType.IqToVac)
-        ctx.IqVacSoundcard.AddSamples(data, 0, count);
+        ctx.IqVacSoundcard.AddSamples(streamData, 0, count);
       else if (ctx.Settings.OutputStream.Type == DataStreamType.IqToUdp)
-        ctx.UdpStreamSender.Send(data, count);
+        ctx.UdpStreamSender.Send(streamData, count);
     }
 
     internal void RoutePlaybackAudio(float[] data, int offset, int count)
@@ -603,6 +640,14 @@ namespace SkyRoof
         ctx.PassesPanel.Close();
     }
 
+    private void MonitoredSatellitesMNU_Click(object sender, EventArgs e)
+    {
+      if (ctx.MonitoredSatellitesPanel == null)
+        ShowFloatingPanel(new MonitoredSatellitesPanel(ctx));
+      else
+        ctx.MonitoredSatellitesPanel.Close();
+    }
+
     private void TimelineMNU_Click(object sender, EventArgs e)
     {
       if (ctx.TimelinePanel == null)
@@ -866,6 +911,7 @@ namespace SkyRoof
       {
         case "SkyRoof.GroupViewPanel": return new GroupViewPanel(ctx);
         case "SkyRoof.SatelliteDetailsPanel": return new SatelliteDetailsPanel(ctx);
+        case "SkyRoof.MonitoredSatellitesPanel": return new MonitoredSatellitesPanel(ctx);
         case "SkyRoof.TransmittersPanel": return new TransmittersPanel(ctx);
         case "SkyRoof.PassesPanel": return new PassesPanel(ctx);
         case "SkyRoof.TimelinePanel": return new TimelinePanel(ctx);
@@ -928,15 +974,46 @@ namespace SkyRoof
       RotatorWidget.Advance();
       ctx.QsoEntryPanel?.SetUtc();
 
+      AutoSelectMonitoredSatelliteForActivePass();
+      AutoRecordSelectedMonitoredSatellite();
+
       ShowCpuUsage();
+    }
+
+    private void AutoRecordSelectedMonitoredSatellite()
+    {
+      if (ctx.AutoRecorder == null || ctx.MonitoredPasses == null) return;
+
+      // Pass-through recording is tied to auto monitoring; with auto tuning off, Audio/IQ prefs are inactive.
+      if (!ctx.Settings.Satellites.AutoMonitorEnabled)
+      {
+        ctx.AutoRecorder.Stop();
+        return;
+      }
+
+      var sat = ctx.SatelliteSelector.SelectedSatellite;
+      if (sat == null) { ctx.AutoRecorder.Stop(); return; }
+
+      var cust = ctx.Settings.Satellites.SatelliteCustomizations.GetOrCreate(sat.sat_id);
+      if (cust.AutoRecordMode == AutoRecordMode.Off) { ctx.AutoRecorder.Stop(); return; }
+
+      var now = DateTime.UtcNow;
+      var activePass = ctx.MonitoredPasses.Passes
+        .FirstOrDefault(p => p.Satellite == sat && p.StartTime <= now && p.EndTime > now);
+      if (activePass == null) { ctx.AutoRecorder.Stop(); return; }
+
+      int maxElDeg = (int)Math.Round(activePass.MaxElevation);
+      ctx.AutoRecorder.EnsureRecording(sat.sat_id, sat.name, maxElDeg, cust.AutoRecordMode);
     }
     private async Task OneMinuteTick()
     {
       ctx.GroupPasses.PredictMorePasses();
       ctx.HamPasses.PredictMorePasses();
       ctx.SdrPasses.PredictMorePasses();
+      ctx.MonitoredPasses.PredictMorePasses();
       ctx.PassesPanel?.ShowPasses();
       ctx.WaterfallPanel?.ScaleControl?.BuildLabels();
+      ctx.MonitoredSatellitesPanel?.RefreshList();
     }
 
     private void OneHourTick()
@@ -968,10 +1045,12 @@ namespace SkyRoof
       ctx.HamPasses.FullRebuild();
       ctx.GroupPasses.FullRebuild();
       ctx.SdrPasses.FullRebuild();
+      ctx.MonitoredPasses.FullRebuild();
 
       ctx.PassesPanel?.ShowPasses();
       ctx.SkyViewPanel?.ClearPass();
       ctx.WaterfallPanel?.ScaleControl?.BuildLabels();
+      SatellitePhotoWidget.SetSatellite(ctx.SatelliteSelector.SelectedSatellite);
 
       ShowSatDataStatus();
     }
@@ -987,6 +1066,8 @@ namespace SkyRoof
 
       ctx.SdrPasses = new(ctx);
       ctx.SdrPasses.FullRebuild();
+      ctx.MonitoredPasses = new(ctx);
+      ctx.MonitoredPasses.FullRebuild();
 
       ctx.SatelliteSelector.SetSelectedPass(null);
       ctx.WaterfallPanel?.ScaleControl?.BuildLabels();
@@ -1004,6 +1085,7 @@ namespace SkyRoof
       ctx.HamPasses.Rebuild();
       ctx.GroupPasses.Rebuild();
       ctx.SdrPasses.Rebuild();
+      ctx.MonitoredPasses.Rebuild();
 
       ctx.SatelliteSelector.SetSelectedPass(null);
       ctx.GroupViewPanel?.LoadGroup(); // replace passes attached to sats
@@ -1028,6 +1110,7 @@ namespace SkyRoof
       ctx.TransmittersPanel?.SetSatellite();
       ctx.PassesPanel?.ShowPasses();
       ctx.QsoEntryPanel?.SetSatellite();
+      SatellitePhotoWidget.SetSatellite(ctx.SatelliteSelector.SelectedSatellite);
     }
 
     private void SatelliteSelector_SelectedTransmitterChanged(object sender, EventArgs e)
@@ -1040,6 +1123,7 @@ namespace SkyRoof
       ctx.QsoEntryPanel?.SetBand();
       ctx.QsoEntryPanel?.SetMode();
       ctx.RecorderPanel?.RememberRecordingEvents();
+      ctx.MonitoredSatellitesPanel?.RefreshList();
     }
 
     private void SatelliteSelector_SelectedPassChanged(object sender, EventArgs e)
@@ -1047,6 +1131,86 @@ namespace SkyRoof
       SatellitePass? pass = ctx.SatelliteSelector.SelectedPass;
       ctx.SkyViewPanel?.SetPass(pass);
       RotatorWidget.SetPass(pass);
+    }
+
+    private string? LastAutoSelectedMonitoredSatId;
+    private DateTime LastAutoSelectTimeUtc = DateTime.MinValue;
+    private static readonly TimeSpan AutoSelectMinInterval = TimeSpan.FromSeconds(2);
+    private DateTime LastAutoParkTimeUtc = DateTime.MinValue;
+    private static readonly TimeSpan AutoParkMinInterval = TimeSpan.FromSeconds(5);
+
+    private void AutoSelectMonitoredSatelliteForActivePass()
+    {
+      if (ctx.SatnogsDb == null || ctx.MonitoredPasses == null) return;
+      if (!ctx.Settings.Satellites.AutoMonitorEnabled) return;
+
+      var ids = ctx.Settings.Satellites.MonitoredSatelliteIds;
+      if (ids == null || ids.Count == 0) return;
+
+      var now = DateTime.UtcNow;
+      if (now - LastAutoSelectTimeUtc < AutoSelectMinInterval) return;
+
+      int minEl = Math.Max(0, Math.Min(90, ctx.Settings.Satellites.AutoMonitorMinElevationDeg));
+
+      var activePasses = ctx.MonitoredPasses.Passes
+        .Where(p => p.StartTime <= now && p.EndTime > now)
+        .ToList();
+
+      if (activePasses.Count == 0)
+      {
+        AutoParkRotatorBetweenPasses(now);
+        return;
+      }
+
+      var activeById = activePasses
+        .GroupBy(p => p.Satellite.sat_id)
+        .ToDictionary(g => g.Key, g => g.First());
+
+      bool anyMeets = activeById.Values.Any(p => p.MaxElevation >= minEl);
+
+      string? chosenId = ids.FirstOrDefault(id =>
+        activeById.ContainsKey(id) && (!anyMeets || activeById[id].MaxElevation >= minEl));
+      if (string.IsNullOrEmpty(chosenId)) return;
+
+      if (chosenId == LastAutoSelectedMonitoredSatId && ctx.SatelliteSelector.SelectedSatellite?.sat_id == chosenId)
+        return;
+
+      var currentId = ctx.SatelliteSelector.SelectedSatellite?.sat_id;
+      if (!string.IsNullOrEmpty(currentId) && activeById.ContainsKey(currentId))
+      {
+        int curIdx = ids.IndexOf(currentId);
+        int chosenIdx = ids.IndexOf(chosenId);
+        if (curIdx >= 0 && chosenIdx >= 0 && curIdx <= chosenIdx)
+        {
+          // If we're currently on a higher/equal priority sat, keep it unless it fails the min elevation
+          // and another active pass meets the threshold.
+          bool currentMeets = activeById[currentId].MaxElevation >= minEl;
+          if (!anyMeets || currentMeets) return;
+        }
+      }
+
+      var sat = ctx.SatnogsDb.GetSatellite(chosenId);
+      if (sat == null) return;
+
+      LastAutoSelectedMonitoredSatId = chosenId;
+      LastAutoSelectTimeUtc = now;
+
+      ctx.SatelliteSelector.SetSelectedSatellite(sat);
+      ctx.SatelliteSelector.SetSelectedPass(activeById[chosenId]);
+    }
+
+    private void AutoParkRotatorBetweenPasses(DateTime nowUtc)
+    {
+      // Only park when auto monitoring is enabled (to avoid unexpected movement).
+      if (!ctx.Settings.Satellites.AutoMonitorEnabled) return;
+      if (!ctx.Settings.Rotator.Enabled) return;
+      if (nowUtc - LastAutoParkTimeUtc < AutoParkMinInterval) return;
+
+      LastAutoParkTimeUtc = nowUtc;
+
+      // Clear the selected pass so tracking logic knows we're between passes.
+      ctx.SatelliteSelector.SetSelectedPass(null);
+      RotatorWidget.Park();
     }
 
     private void UpdateLabel_Click(object sender, EventArgs e)
@@ -1057,6 +1221,27 @@ namespace SkyRoof
     private void RotatorTrackMNU_CheckedChanged(object sender, EventArgs e)
     {
       RotatorWidget.ToggleTracking();
+    }
+
+    private void UpdateSatellitePhotoVisibility()
+    {
+      if (SatellitePhotoWidget == null) return;
+
+      // Show only when toolbar is wide enough to fit everything (keep existing widgets visible first).
+      int required =
+        panel2.Width +
+        SatellitePhotoWidget.Width +
+        SatelliteSelecionWidget.Width +
+        panel1.Width +
+        FrequencyWidget.Width +
+        panel3.Width +
+        GainWidget.Width +
+        panel7.Width +
+        RotatorWidget.Width +
+        panel5.Width +
+        ClockPanel.Width;
+
+      SatellitePhotoWidget.Visible = Toolbar.ClientSize.Width >= required + 10;
     }
   }
 }
