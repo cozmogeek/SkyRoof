@@ -140,6 +140,7 @@
       RotatorWidget.Size = new Size(210, 78);
       RotatorWidget.TabIndex = 8;
       // 
+      // 
       // panel7
       // 
       panel7.Dock = DockStyle.Left;
@@ -834,6 +835,7 @@
     private ToolStripStatusLabel RxCatLedLabel;
     private ToolStripStatusLabel RxCatStatusLabel;
     private RotatorWidget RotatorWidget;
+    public SatellitePhotoWidget SatellitePhotoWidget;
     private Panel panel5;
     private Panel panel4;
     private ToolStripStatusLabel RotatorLedLabel;

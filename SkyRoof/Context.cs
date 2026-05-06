@@ -24,6 +24,7 @@ namespace SkyRoof
     public SatelliteSelectorWidget SatelliteSelector;
     public FrequencyWidget FrequencyControl;
     public RotatorWidget RotatorControl;
+    public SatellitePhotoWidget SatellitePhotoWidget;
 
     // panels
     public GroupViewPanel? GroupViewPanel;
