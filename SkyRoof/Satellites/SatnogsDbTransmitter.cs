@@ -1,4 +1,6 @@
-﻿namespace SkyRoof
+﻿using System.Text;
+
+namespace SkyRoof
 {
   public class SatnogsDbTransmitter
   {
@@ -43,31 +45,48 @@
 
     public string GetTooltipText()
     {
-      string mode = this.mode;
-      if (baud != null && baud != 0) mode = $"{mode} {baud} Bd";
-      string uplink = FormatFrequencyRange(uplink_low, uplink_high);
-      string downlink = FormatFrequencyRange(downlink_low, downlink_high, invert);
+      var sb = new StringBuilder();
 
-      string result = $"{description}\nType: {type}\n";
-      if (uplink_low != null) result += $"Uplink: {uplink}\n";
-      result += $"Downlink: {downlink}\nMode: {mode}\n";
-      if (uplink_low != null) result += $"Inverted: {invert}\n";
-      result += $"Service: {service}\nUpdated: {updated:yyyy-MM-dd}";
+      // all details from the SatNOGS DB (empty fields are skipped)
+      sb.Append("satnogs\n");
+      AddLine(sb, "Description", description);
+      AddLine(sb, "Type", type);
+      AddLine(sb, "Status", status);
+      AddLine(sb, "Alive", alive ? "yes" : "no");
+      if (norad_cat_id != null) AddLine(sb, "NORAD", norad_cat_id.ToString());
+      if (uplink_low != null) AddLine(sb, "Uplink", FormatFrequencyRange(uplink_low, uplink_high));
+      AddLine(sb, "Uplink mode", uplink_mode);
+      if (uplink_drift != null) AddLine(sb, "Uplink drift", $"{uplink_drift} Hz");
+      AddLine(sb, "Downlink", FormatFrequencyRange(downlink_low, downlink_high, invert));
+      if (downlink_drift != null) AddLine(sb, "Downlink drift", $"{downlink_drift} Hz");
+      AddLine(sb, "Mode", mode);
+      AddLine(sb, "Downlink mode", DownlinkMode);
+      if (baud != null && baud != 0) AddLine(sb, "Baud", $"{baud} Bd");
+      if (uplink_low != null) AddLine(sb, "Inverted", invert ? "yes" : "no");
+      AddLine(sb, "Service", service);
+      AddLine(sb, "Updated", updated.ToString("yyyy-MM-dd"));
 
-      // gr-satellites satyaml enrichment (only the fields that are present)
+      // gr-satellites satyaml enrichment, merged with any local transmitters-override.json values
       if (gr_sats != null)
       {
-        if (gr_sats.modulation != null) result += $"\nModulation: {gr_sats.modulation}";
-        if (gr_sats.baudrate != null) result += $"\nBaudrate: {gr_sats.baudrate} Bd";
-        if (gr_sats.deviation != null) result += $"\nDeviation: {gr_sats.deviation} Hz";
-        if (gr_sats.framing != null) result += $"\nFraming: {gr_sats.framing}";
-        if (gr_sats.precoding != null) result += $"\nPrecoding: {gr_sats.precoding}";
-        if (gr_sats.rs_basis != null) result += $"\nRS basis: {gr_sats.rs_basis}";
-        if (gr_sats.frame_size != null) result += $"\nFrame size: {gr_sats.frame_size}";
-        if (gr_sats.telemetry != null) result += $"\nTelemetry: {gr_sats.telemetry}";
+        sb.Append("satyaml\n");
+        AddLine(sb, "Modulation", gr_sats.modulation);
+        if (gr_sats.baudrate != null) AddLine(sb, "Baudrate", $"{gr_sats.baudrate} Bd");
+        if (gr_sats.deviation != null) AddLine(sb, "Deviation", $"{gr_sats.deviation} Hz");
+        AddLine(sb, "Framing", gr_sats.framing);
+        AddLine(sb, "Precoding", gr_sats.precoding);
+        AddLine(sb, "RS basis", gr_sats.rs_basis);
+        if (gr_sats.frame_size != null) AddLine(sb, "Frame size", gr_sats.frame_size.ToString());
+        AddLine(sb, "Telemetry", gr_sats.telemetry);
       }
 
-      return result;
+      return sb.ToString().TrimEnd();
+    }
+
+    // append an indented "  name: value" line to the tooltip when the value is non-empty
+    private static void AddLine(StringBuilder sb, string name, string? value)
+    {
+      if (!string.IsNullOrEmpty(value)) sb.Append($"  {name}: {value}\n");
     }
 
     public static string FormatFrequencyRange(long? low, long? high, bool inverted = false)

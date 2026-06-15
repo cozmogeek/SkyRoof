@@ -1,0 +1,9 @@
+{
+  "hdxq4LxTwD3moSxZ3wwd8G": {
+    "satellite": "NIGHTJAR",
+    "norad": 60535,
+    "modulation": "GMSK",
+    "baudrate": 4800,
+    "framing": "AX.25 G3RUH"
+  }
+}

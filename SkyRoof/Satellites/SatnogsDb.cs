@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Linq;
 using Serilog;
 using SGPdotNET.TLE;
 using VE3NEA;
@@ -33,6 +34,10 @@ namespace SkyRoof
       DataFolder = Utils.GetUserDataFolder();
       DownloadsFolder = Path.Combine(DataFolder, "Downloads");
       Directory.CreateDirectory(DownloadsFolder);
+
+      // seed the user-editable transmitter overrides file from the embedded default on first run
+      string txOverrideFile = Path.Combine(DataFolder, "transmitters-override.json");
+      if (!File.Exists(txOverrideFile)) File.WriteAllBytes(txOverrideFile, Properties.Resources.transmitters_override);
 
       JsonSettings.Converters.Add(new IsoDateTimeConverter { DateTimeFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ssK" });
 
@@ -228,6 +233,10 @@ namespace SkyRoof
         try { ImportSatyaml(); }
         catch (Exception ex) { Log.Warning(ex, "satyaml import failed (enrichment skipped)"); }
 
+        // local hand-curated overrides on top of satyaml — enrichment only, never abort the import
+        try { ImportTransmitterOverrides(); }
+        catch (Exception ex) { Log.Warning(ex, "transmitter overrides import failed (enrichment skipped)"); }
+
         var satNames = new SatelliteNames();
 
         foreach (var sat in Satellites)
@@ -318,6 +327,41 @@ namespace SkyRoof
         }
       }
       Log.Information($"satyaml: enriched {matched} transmitters");
+    }
+
+    // Apply hand-curated GrSatsInfo overrides from Data\transmitters-override.json on top of the
+    // satyaml enrichment. The file maps a transmitter uuid to a partial GrSatsInfo object that lists
+    // only the fields to override; absent fields are left untouched (PopulateObject merges in place).
+    // This is how we supply data the SatNOGS DB lacks and gr-satellites has no satyaml entry for
+    // (e.g. FSK deviation), or correct wrong DB values (e.g. baud).
+    private void ImportTransmitterOverrides()
+    {
+      string path = Path.Combine(DataFolder, "transmitters-override.json");
+      if (!File.Exists(path)) return;
+
+      var overrides = JsonConvert.DeserializeObject<Dictionary<string, JObject>>(File.ReadAllText(path));
+      if (overrides == null) return;
+
+      // index every transmitter by uuid for a quick lookup
+      var byUuid = new Dictionary<string, SatnogsDbTransmitter>();
+      foreach (var sat in Satellites)
+        foreach (var tx in sat.Transmitters)
+          byUuid[tx.uuid] = tx;
+
+      int applied = 0;
+      foreach (var (uuid, fields) in overrides)
+      {
+        if (!byUuid.TryGetValue(uuid, out var tx))
+        {
+          Log.Warning($"transmitter override: uuid {uuid} not found in the imported transmitters");
+          continue;
+        }
+
+        tx.gr_sats ??= new GrSatsInfo();
+        JsonConvert.PopulateObject(fields.ToString(), tx.gr_sats);
+        applied++;
+      }
+      Log.Information($"transmitter overrides: applied {applied} of {overrides.Count}");
     }
 
     // example: RS-44;44909;145.935-145.995;435.670-435.610;435.605 ;SSB CW;RS44;Operational

@@ -163,6 +163,9 @@
   <data name="lotw_sat_names" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\json\lotw_sat_names.json;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
+  <data name="transmitters_override" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\json\transmitters-override.json;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
   <data name="N" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\img\N.png;System.Byte[], mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>

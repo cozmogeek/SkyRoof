@@ -189,6 +189,16 @@ namespace SkyRoof.Properties {
                 return ((byte[])(obj));
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Byte[].
+        /// </summary>
+        internal static byte[] transmitters_override {
+            get {
+                object obj = ResourceManager.GetObject("transmitters_override", resourceCulture);
+                return ((byte[])(obj));
+            }
+        }
         
         /// <summary>
         ///   Looks up a localized resource of type System.Byte[].
