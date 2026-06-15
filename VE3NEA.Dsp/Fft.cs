@@ -14,9 +14,13 @@ namespace VE3NEA
     public T[] InputData;
     public Complex32[] OutputData;
 
+    private readonly NativeFftw.FftwDirection Direction;
 
-    public Fft(int size, NativeFftw.FftwFlags flags = NativeFftw.FftwFlags.Patient)
+
+    public Fft(int size, NativeFftw.FftwFlags flags = NativeFftw.FftwFlags.Patient,
+      NativeFftw.FftwDirection direction = NativeFftw.FftwDirection.Forward)
     {
+      Direction = direction;
       // managed buffers visible to the calling code
       if (typeof(T) == typeof(float))
       {
@@ -42,9 +46,14 @@ namespace VE3NEA
       NativeFftw.make_planner_thread_safe();
 
       if (typeof(T) == typeof(float))
+      {
+        // the real-to-complex transform is inherently forward; an inverse needs the complex element type.
+        if (direction != NativeFftw.FftwDirection.Forward)
+          throw new ArgumentException("Inverse FFT requires the Complex32 element type (real-to-complex is forward only).");
         Plan = NativeFftw.dft_r2c_1d(InputData.Length, InputPtr, OutputPtr, flags);
+      }
       else
-        Plan = NativeFftw.dft_1d(InputData.Length, InputPtr, OutputPtr, NativeFftw.FftwDirection.Forward, flags);
+        Plan = NativeFftw.dft_1d(InputData.Length, InputPtr, OutputPtr, direction, flags);
     }
     
     public void Dispose()
@@ -67,6 +76,13 @@ namespace VE3NEA
 
       var complexSpan = new Span<Complex32>((void*)OutputPtr, OutputData.Length);
       complexSpan.CopyTo(OutputData);
+
+      // FFTW's backward transform is unnormalized; scale by 1/N so a Backward plan is a true inverse DFT.
+      if (Direction == NativeFftw.FftwDirection.Backward)
+      {
+        float norm = 1f / InputData.Length;
+        for (int i = 0; i < OutputData.Length; i++) OutputData[i] *= norm;
+      }
     }
 
     private static string? WisdomPath;
