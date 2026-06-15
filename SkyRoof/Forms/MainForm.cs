@@ -676,6 +676,14 @@ namespace SkyRoof
         ctx.QsoSchedulerPanel.Close();
     }
 
+    private void TelemetryMNU_Click(object sender, EventArgs e)
+    {
+      if (ctx.TelemetryPanel == null)
+        ShowFloatingPanel(new TelemetryPanel(ctx));
+      else
+        ctx.TelemetryPanel.Close();
+    }
+
     private void SettingsMNU_Click(object sender, EventArgs e)
     {
       new SettingsDialog(ctx).ShowDialog();
@@ -906,6 +914,7 @@ namespace SkyRoof
         case "SkyRoof.Ft4ConsolePanel": return new Ft4ConsolePanel(ctx);
         case "SkyRoof.RecorderPanel": return new RecorderPanel(ctx);
         case "SkyRoof.QsoSchedulerPanel": return new QsoSchedulerPanel(ctx);
+        case "SkyRoof.TelemetryPanel": return new TelemetryPanel(ctx);
 
         default: return null;
       }
@@ -1063,6 +1072,7 @@ namespace SkyRoof
       ctx.EarthViewPanel?.SetSatellite();
       ctx.SatelliteDetailsPanel?.SetSatellite();
       ctx.TransmittersPanel?.SetSatellite();
+      ctx.TelemetryPanel?.SetSatellite();
       ctx.PassesPanel?.ShowPasses();
       ctx.QsoEntryPanel?.SetSatellite();
       SatellitePhotoWidget.SetSatellite(ctx.SatelliteSelector.SelectedSatellite);
