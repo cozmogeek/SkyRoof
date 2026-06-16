@@ -5,5 +5,32 @@
     "modulation": "GMSK",
     "baudrate": 4800,
     "framing": "AX.25 G3RUH"
+  },
+  "TppBmrNUoudprjLLktfcC2": {
+    "satellite": "KuzGTU-1",
+    "norad": 57217,
+    "modulation": "GMSK",
+    "baudrate": 9600,
+    "framing": "USP"
+  },
+  "oSkpmfHTdPWbvQnHn9eNCM": {
+    "satellite": "UTMN2",
+    "norad": 57203,
+    "modulation": "GMSK",
+    "baudrate": 9600,
+    "framing": "USP"
+  },
+  "4T8D7kLMyV8rF5r4rpBnfd": {
+    "satellite": "SATURN",
+    "norad": 57174,
+    "deviation": 2400,
+    "note": "unfiltered FSK, 2400 Hz deviation (SatNOGS/satyaml's 600 Hz is wrong)"
+  },
+  "i465qXQxgdFDaJD38cPCiH": {
+    "satellite": "HADES-SA",
+    "norad": 68446,
+    "baudrate": 800,
+    "deviation": 800,
+    "framing": "Hades"
   }
 }
