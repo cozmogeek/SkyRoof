@@ -119,6 +119,14 @@ namespace SkyRoof
         sat.Transmitters.Any(tx => tx.DownlinkLow >= StartFrequency) &&
         sat.Transmitters.Any(tx => tx.DownlinkLow <= EndFrequency));
     }
+
+    internal bool IsAboveHorizon(SatnogsDbSatellite? satellite)
+    {
+      if (satellite == null) return false;
+      
+      var pass = ctx.SdrPasses.GetNextPass(satellite);
+      return pass != null && pass.StartTime < DateTime.UtcNow && pass.EndTime > DateTime.UtcNow;
+    }
   }
 
 

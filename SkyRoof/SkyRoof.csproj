@@ -179,17 +179,21 @@
     <Folder Include="ControlsEx\ColorSpace\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Reference Include="VE3NEA.Tlm">
+      <HintPath>..\..\..\Try\FskDemod\FskDemod\bin\x64\Debug\net10.0-windows\VE3NEA.Tlm.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
   <Target Name="ExcludeRootSystemSpeechFromBuildOutput" AfterTargets="ResolveReferences">
     <ItemGroup>
-      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
-                               Condition="'%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'System.Speech.dll' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' == ''" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'System.Speech.dll' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' == ''" />
     </ItemGroup>
   </Target>
 
   <Target Name="ExcludeRootSystemSpeechFromPublishOutput" AfterTargets="ComputeResolvedFilesToPublishList">
     <ItemGroup>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
-                             Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'System.Speech.dll' and '%(ResolvedFileToPublish.RelativePath)' == 'System.Speech.dll'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.Filename)%(ResolvedFileToPublish.Extension)' == 'System.Speech.dll' and '%(ResolvedFileToPublish.RelativePath)' == 'System.Speech.dll'" />
     </ItemGroup>
   </Target>
 
