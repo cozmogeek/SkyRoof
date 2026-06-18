@@ -248,5 +248,10 @@ namespace SkyRoof
 
       return boundary;
     }
+
+    internal bool IsAboveHorizon()
+    {
+      return StartTime < DateTime.UtcNow && EndTime > DateTime.UtcNow;
+    }
   }
 }

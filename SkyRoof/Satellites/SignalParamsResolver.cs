@@ -18,19 +18,16 @@ namespace SkyRoof.Satellites
       double? baud = grSats?.baudrate ?? tx.baud ?? ParseBaud(tx.description);
       if (baud is not double bd) return null;
 
-      // Mode string: prefer canonical DownlinkMode (mapped from mode_id, e.g. "FSK AX.100 Mode 5",
-      // "GENESIS FSK") which encodes framing/modulation more reliably than the raw DB mode; fall back to it.
-      string? modeStr = tx.DownlinkMode ?? tx.mode;
-
       // Modulation: trust the gr-satellites enrichment first (curated), then the description, then the mode.
-      Modulation mod = ClassifyModulation(grSats?.modulation, null);
-      if (mod == Modulation.Unknown) mod = ClassifyModulation(null, tx.description);
-      if (mod == Modulation.Unknown) mod = ClassifyModulation(modeStr, null);
+      Modulation mod = ExtractyModulation(grSats?.modulation);
+      if (mod == Modulation.Unknown) mod = ExtractyModulation(tx.description);
+      if (mod == Modulation.Unknown) mod = ExtractyModulation(tx.mode);
+      if (mod == Modulation.Unknown) mod = ExtractyModulation(tx.DownlinkMode);
 
       // Framing: take it from the gr-satellites enrichment first (e.g. "AX100 ASM+Golay"), then from the
-      // DB mode/description
-      Framing framing = FramingFrom(null, grSats?.framing);
-      if (framing == Framing.Unknown) framing = FramingFrom(modeStr, tx.description);
+      // DB mode, then the description
+      Framing framing = ExtractFraming(grSats?.framing);
+      if (framing == Framing.Unknown) framing = ExtractFraming(tx.description);
 
       // Deviation: GMSK ⇒ baud/4 (derived in SignalParams); else the gr-satellites enrichment value (which
       // carries the hand-curated transmitter overrides folded in by SkyRoof, e.g. SATURN/HADES-SA FSK deviation).
@@ -44,9 +41,9 @@ namespace SkyRoof.Satellites
       if (mod == Modulation.Bpsk || mod == Modulation.Qpsk)
         differential = grSats?.precoding is string pc && pc.Contains("differential", StringComparison.OrdinalIgnoreCase);
 
-      return new SignalParams(bd, mod, modeStr, framing, AudioSampleRate, devOverride)
+      return new SignalParams(bd, mod, framing, AudioSampleRate, devOverride)
       {
-        Manchester = IsManchester(grSats?.modulation, tx.description, modeStr),
+        Manchester = IsManchester(grSats?.modulation, tx.description),
         Differential = differential,
         RsBasis = grSats?.rs_basis,
         FrameSize = grSats?.frame_size
@@ -75,60 +72,57 @@ namespace SkyRoof.Satellites
     }
 
 
-    /// <summary>Map DB <c>mode</c> / <c>description</c> to a deframing flavor (FR-5).</summary>
-    public static Framing FramingFrom(string? mode, string? description)
+    /// <summary>Map one DB <c>mode</c> / <c>description</c> / gr-satellites string to a deframing flavor (FR-5).</summary>
+    public static Framing ExtractFraming(string? text)
     {
-      string m = mode ?? "";
-      string d = description ?? "";
+      string s = text ?? "";
 
       // GOMspace AX100: gr-satellites framing strings "AX100 ASM+Golay" / "AX100 Reed Solomon", or DB
       // descriptions like "GMSK 4k8 AX.100 Mode 5". Mode 5 = ASM+Golay, Mode 6 = the RS framing; plain
       // "AX100" defaults to ASM+Golay (the overwhelmingly common flavor in the wild).
-      string md = $"{m} {d}";
-      if (md.Contains("AX100", StringComparison.OrdinalIgnoreCase) ||
-          md.Contains("AX.100", StringComparison.OrdinalIgnoreCase))
-        return md.Contains("Reed", StringComparison.OrdinalIgnoreCase) ||
-               md.Contains("Mode 6", StringComparison.OrdinalIgnoreCase)
+      if (s.Contains("AX100", StringComparison.OrdinalIgnoreCase) ||
+          s.Contains("AX.100", StringComparison.OrdinalIgnoreCase))
+        return s.Contains("Reed", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("Mode 6", StringComparison.OrdinalIgnoreCase)
           ? Framing.Ax100Rs : Framing.Ax100Asm;
 
-      if (m.Contains("USP", StringComparison.OrdinalIgnoreCase) ||
-          d.Contains("USP", StringComparison.OrdinalIgnoreCase))
+      if (s.Contains("USP", StringComparison.OrdinalIgnoreCase))
         return Framing.Usp;
 
-      if (m.Contains("AX.25", StringComparison.OrdinalIgnoreCase) ||
-          d.Contains("AX.25", StringComparison.OrdinalIgnoreCase) ||
-          d.Contains("G3RUH", StringComparison.OrdinalIgnoreCase))
+      if (s.Contains("AX.25", StringComparison.OrdinalIgnoreCase) ||
+          s.Contains("G3RUH", StringComparison.OrdinalIgnoreCase))
         return Framing.Ax25G3ruh;
 
       // AMSAT-EA GENESIS family (HADES-SA SpinnyONE et al.): SatNOGS labels these "GENESIS FSK"/HADES.
-      if (m.Contains("GENESIS", StringComparison.OrdinalIgnoreCase) ||
-          d.Contains("GENESIS", StringComparison.OrdinalIgnoreCase) ||
-          m.Contains("HADES", StringComparison.OrdinalIgnoreCase) ||
-          d.Contains("HADES", StringComparison.OrdinalIgnoreCase))
+      if (s.Contains("GENESIS", StringComparison.OrdinalIgnoreCase) ||
+          s.Contains("HADES", StringComparison.OrdinalIgnoreCase))
         return Framing.Hades;
 
       return Framing.Unknown;
     }
 
     /// <summary>
-    /// Classify modulation from the DB <c>mode</c> and <c>description</c>. Order matters:
+    /// Classify modulation from one DB <c>mode</c> / <c>description</c> string. Order matters:
     /// GMSK/GFSK are checked before the generic "FSK" substring they contain. AFSK is treated as
     /// plain FSK (the demodulator handles it on the FSK path).
     /// </summary>
-    public static Modulation ClassifyModulation(string? mode, string? description)
+    public static Modulation ExtractyModulation(string? text)
     {
-      string s = $"{mode} {description}".ToUpperInvariant();
+      string s = (text ?? "").ToUpperInvariant();
       if (s.Contains("GMSK")) return Modulation.Gmsk;
       if (s.Contains("GFSK")) return Modulation.Gfsk;
       if (s.Contains("AFSK")) return Modulation.Fsk;
+      if (s.Contains("MSK")) return Modulation.Fsk;
+      if (s.Contains("FSK")) return Modulation.Fsk;
 
       // PSK constellation order only: any QPSK flavor (incl. OQPSK / DQPSK) → Qpsk, everything else PSK → Bpsk.
       // The differential-vs-coherent distinction is deliberately NOT taken from the label — the DB's
       // "BPSK"/"DBPSK" tags proved unreliable — it comes from the gr_sats precoding field instead
       // (see Resolve), defaulting to coherent.
       if (s.Contains("QPSK")) return Modulation.Qpsk;
-      if (s.Contains("BPSK") || s.Contains("PSK")) return Modulation.Bpsk;
-      if (s.Contains("FSK")) return Modulation.Fsk;
+      if (s.Contains("BPSK")) return Modulation.Bpsk;
+      if (s.Contains("PSK")) return Modulation.Bpsk;
+
       if (s.Contains("SSTV")) return Modulation.Sstv;
       if (s.Contains("CW")) return Modulation.Cw;
       return Modulation.Unknown;
@@ -139,11 +133,11 @@ namespace SkyRoof.Satellites
     /// coding — the <c>DBPSK Manchester</c> AMSAT/FUNcube case. Drives <see cref="SignalParams.Manchester"/> so
     /// the demodulator combines chip pairs into data symbols.
     /// </summary>
-    public static bool IsManchester(params string?[] texts)
+    public static bool? IsManchester(params string?[] texts)
     {
       foreach (var t in texts)
         if (!string.IsNullOrEmpty(t) && t.Contains("MANCHESTER", StringComparison.OrdinalIgnoreCase)) return true;
-      return false;
+      return null;
     }
   }
 }

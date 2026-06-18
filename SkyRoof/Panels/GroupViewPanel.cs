@@ -2,6 +2,7 @@
 using Serilog;
 using VE3NEA;
 using WeifenLuo.WinFormsUI.Docking;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace SkyRoof
 {
@@ -210,6 +211,11 @@ namespace SkyRoof
     private void contextMenuStrip1_Opening(object sender, System.ComponentModel.CancelEventArgs e)
     {
       if (listView1.SelectedIndices.Count == 0) e.Cancel = true;
+    }
+
+    private void GroupViewPanel_MouseClick(object sender, MouseEventArgs e)
+    {
+      
     }
   }
 }

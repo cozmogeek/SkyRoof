@@ -57,7 +57,6 @@
       listView1.ShowItemToolTips = true;
       listView1.Size = new Size(414, 383);
       listView1.SmallImageList = imageList1;
-      listView1.Sorting = SortOrder.None;
       listView1.StateImageList = imageList1;
       listView1.TabIndex = 8;
       listView1.UseCompatibleStateImageBehavior = false;
@@ -132,6 +131,7 @@
       Name = "GroupViewPanel";
       Text = "Current Satellite Group";
       FormClosing += GroupViewPanel_FormClosing;
+      MouseClick += GroupViewPanel_MouseClick;
       contextMenuStrip1.ResumeLayout(false);
       ResumeLayout(false);
     }
