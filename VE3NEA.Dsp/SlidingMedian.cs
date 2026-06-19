@@ -9,11 +9,11 @@ namespace VE3NEA
   /// </summary>
   public sealed class SlidingMedian
   {
-    private readonly float[] _values;   // ring of raw samples, in arrival order
-    private readonly float[] _sorted;   // the same window, kept sorted
-    private readonly int _outIdx;       // index of the reported decile in _sorted
-    private int _currIdx;
-    private bool _seeded;
+    private readonly float[] values;   // ring of raw samples, in arrival order
+    private readonly float[] sorted;   // the same window, kept sorted
+    private readonly int outIdx;       // index of the reported decile in _sorted
+    private int currIdx;
+    private bool seeded;
 
     /// <param name="len">Window length in samples.</param>
     /// <param name="decile">Which order statistic to report: 0.5 = median (default), 0.25 = lower
@@ -21,39 +21,39 @@ namespace VE3NEA
     public SlidingMedian(int len, double decile = 0.5)
     {
       if (len < 1) throw new ArgumentOutOfRangeException(nameof(len));
-      _values = new float[len];
-      _sorted = new float[len];
-      _outIdx = (int)Math.Round((len - 1) * Math.Clamp(decile, 0.0, 1.0));
+      values = new float[len];
+      sorted = new float[len];
+      outIdx = (int)Math.Round((len - 1) * Math.Clamp(decile, 0.0, 1.0));
     }
 
-    public int Length => _values.Length;
+    public int Length => values.Length;
 
     /// <summary>Group delay of the window, in samples.</summary>
-    public int Delay => (_values.Length - 1) / 2;
+    public int Delay => (values.Length - 1) / 2;
 
     /// <summary>The current decile value over the window.</summary>
-    public float Value => _sorted[_outIdx];
+    public float Value => sorted[outIdx];
 
     /// <summary>Forget the window; the next <see cref="Process"/> re-seeds it.</summary>
-    public void Reset() => _seeded = false;
+    public void Reset() => seeded = false;
 
     /// <summary>Push one sample, drop the oldest, return the updated decile. The very first sample seeds
     /// the whole window (no zero-fill bias while the window fills).</summary>
     public float Process(float v)
     {
-      if (!_seeded)
+      if (!seeded)
       {
-        Array.Fill(_values, v);
-        Array.Fill(_sorted, v);
-        _currIdx = 0;
-        _seeded = true;
+        Array.Fill(values, v);
+        Array.Fill(sorted, v);
+        currIdx = 0;
+        seeded = true;
         return v;
       }
 
-      Replace(_values[_currIdx], v);
-      _values[_currIdx] = v;
-      if (++_currIdx == _values.Length) _currIdx = 0;
-      return _sorted[_outIdx];
+      Replace(values[currIdx], v);
+      values[currIdx] = v;
+      if (++currIdx == values.Length) currIdx = 0;
+      return sorted[outIdx];
     }
 
     /// <summary>Swap <paramref name="oldV"/> for <paramref name="newV"/> in the sorted window: locate both
@@ -65,17 +65,17 @@ namespace VE3NEA
 
       if (newP > oldP + 1)
       {
-        Array.Copy(_sorted, oldP + 1, _sorted, oldP, newP - oldP - 1);
-        _sorted[newP - 1] = newV;
+        Array.Copy(sorted, oldP + 1, sorted, oldP, newP - oldP - 1);
+        sorted[newP - 1] = newV;
       }
       else if (newP < oldP)
       {
-        Array.Copy(_sorted, newP, _sorted, newP + 1, oldP - newP);
-        _sorted[newP] = newV;
+        Array.Copy(sorted, newP, sorted, newP + 1, oldP - newP);
+        sorted[newP] = newV;
       }
       else
       {
-        _sorted[oldP] = newV;   // newP == oldP or oldP+1: the slot itself is the right place
+        sorted[oldP] = newV;   // newP == oldP or oldP+1: the slot itself is the right place
       }
     }
 
@@ -83,11 +83,11 @@ namespace VE3NEA
     /// being replaced, so this finds an existing slot for olds and the insertion point for news).</summary>
     private int LowerBound(float v)
     {
-      int lo = 0, hi = _sorted.Length - 1;
+      int lo = 0, hi = sorted.Length - 1;
       while (lo <= hi)
       {
         int mid = (lo + hi) >> 1;
-        if (_sorted[mid] < v) lo = mid + 1; else hi = mid - 1;
+        if (sorted[mid] < v) lo = mid + 1; else hi = mid - 1;
       }
       return lo;
     }

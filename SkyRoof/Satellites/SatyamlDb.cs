@@ -16,7 +16,7 @@ namespace SkyRoof
   /// </summary>
   public sealed class SatyamlDb
   {
-    private readonly Dictionary<int, List<GrSatsInfo>> _byNorad = new();
+    private readonly Dictionary<int, List<GrSatsInfo>> byNorad = new();
 
     public static SatyamlDb? Load(string dir)
     {
@@ -34,10 +34,10 @@ namespace SkyRoof
     /// <summary>Best transmitter match for a NORAD id, nearest to <paramref name="baud"/>.</summary>
     public GrSatsInfo? Find(int norad, double? baud)
     {
-      if (!_byNorad.TryGetValue(norad, out var list) || list.Count == 0) return null;
+      if (!byNorad.TryGetValue(norad, out var list) || list.Count == 0) return null;
       if (baud is double b)
-        return list.OrderBy(t => Math.Abs((t.baudrate ?? double.MaxValue) - b)).First();
-      return list[0];
+        return list.FirstOrDefault(t => (t.baudrate ?? double.MaxValue) == b);
+      return null;
     }
 
     private void ParseFile(string path)
@@ -169,7 +169,7 @@ namespace SkyRoof
       FlushTx();
 
       if (transmitters.Count == 0 || norad is not int nn) return;
-      _byNorad[nn] = transmitters;
+      byNorad[nn] = transmitters;
     }
 
     /// <summary>

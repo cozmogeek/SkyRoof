@@ -144,7 +144,7 @@ namespace SkyRoof
 
     private void CreatDestroyPipeline()
     {
-      bool needPipeline = !Terrestrial && SignalParamsDecodable() && SatAboveHorizon;
+      bool needPipeline = !Terrestrial && IsDecodable() && SatAboveHorizon;
       if ((Decoder != null) == needPipeline) return;
 
       if (Decoder != null) Decoder.Pipeline.FrameDecoded -= FrameDecodedHandler;
@@ -169,10 +169,10 @@ namespace SkyRoof
       Modulation.BPSK 
     };
 
-    private bool SignalParamsDecodable()
+    private bool IsDecodable()
     {
       if (SignalParams == null) return false;
-      if (SignalParams.Framing == Framing.Unknown) return false;
+      if (SignalParams.Framing == Framing.Unknown || SignalParams.Modulation == Modulation.Unknown || SignalParams.Baud == 0) return false;
       return SupportedModulations.Contains(SignalParams.Modulation);
     }
 
@@ -217,10 +217,10 @@ namespace SkyRoof
       node.Tag = frameText;
       CurrentTxPass.Nodes.Add(node);
       txPassInfo.FrameCount++;
-      //richTextBox1.Text = JsonConvert.SerializeObject(frame, Formatting.Indented, SerializerParams);
-      richTextBox1.Text = frameText;
+      //richTextBox1.Text = frameText;
 
       CurrentTxPass.Expand();
+      treeView1.SelectedNode = node;
     }
 
     private string BuildFrameText(Frame frame)
@@ -264,7 +264,7 @@ namespace SkyRoof
       CreatDestroyPipeline();
 
       if (Terrestrial) StatusLabel.Text = "not decoded";
-      else if (!SignalParamsDecodable()) StatusLabel.Text = "format not supported";
+      else if (!IsDecodable()) StatusLabel.Text = "format not supported";
       else if (!SatAboveHorizon) StatusLabel.Text = "satellite below horizon";
       else StatusLabel.Text = "ready to decode";
     }

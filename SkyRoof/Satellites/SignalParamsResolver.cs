@@ -5,7 +5,6 @@ namespace SkyRoof.Satellites
 {
   internal class SignalParamsResolver
   {
-    // sample rate of the audio stream fed to the StreamingPipeline; the demodulator resamples internally
     private const double AudioSampleRate = 48000;
 
     public static SignalParams? Resolve(SatnogsDbTransmitter tx)
@@ -13,12 +12,9 @@ namespace SkyRoof.Satellites
       if (tx == null) return null;
       var grSats = tx.gr_sats;
 
-      // Baud: prefer the curated gr-satellites baudrate, then the SatNOGS DB field, then a token parsed
-      // from the description (e.g. "GMSK 9k6"). No baud ⇒ format not supported.
-      double? baud = grSats?.baudrate ?? tx.baud ?? ParseBaud(tx.description);
-
-      // TODO: return result even if baud is missing
-      if (baud is not double bd) return null;
+      // Baud: prefer the curated satyaml baudrate, then the SatNOGS DB field,
+      // then a token parsed from the description (e.g. "GMSK 9k6")
+      double baud = grSats?.baudrate ?? tx.baud ?? ParseBaud(tx.description) ?? 0;
 
       string modeString = $"{grSats?.modulation} {tx.description} {tx.mode} {tx.DownlinkMode}";
       Modulation mod = ExtractyModulation(modeString);
@@ -28,45 +24,44 @@ namespace SkyRoof.Satellites
 
       double? devOverride = mod == Modulation.GMSK ? null : grSats?.deviation;
 
-      // Differential (PSK only): taken from the gr-satellites satyaml precoding — unlike the DB's unreliable
-      // BPSK/DBPSK labels, gr-satellites states it explicitly (e.g. ASRTU-1 "precoding: differential"). Default
-      // to coherent: every off-air PSK signal in the corpus (TEVEL2-1, Eaglet-1) is coherent, so we resolve
-      // coherent unless precoding explicitly says "differential".
+      // Differential (PSK only): taken from the satyaml precoding — unlike the DB's unreliable
+      // BPSK/DBPSK labels, satyaml states it explicitly (e.g. ASRTU-1 "precoding: differential").
+      // Default to coherent: every off-air PSK signal in the corpus (TEVEL2-1, Eaglet-1) is coherent,
+      // so we resolve coherent unless precoding explicitly says "differential".
       bool? differential = null;
       if (mod == Modulation.BPSK || mod == Modulation.QPSK)
         differential = grSats?.precoding is string pc && pc.Contains("differential", StringComparison.OrdinalIgnoreCase);
 
-      var sp = new SignalParams(bd, mod, framing, AudioSampleRate, devOverride)
+      var sp = new SignalParams(baud, mod, framing, AudioSampleRate, devOverride)
       {
         Manchester = IsManchester(grSats?.modulation, tx.description),
         Differential = differential,
         RsBasis = grSats?.rs_basis,
         FrameSize = grSats?.frame_size
       };
-      return framing == Framing.CCSDS ? ApplyCcsdsOptions(sp, grSats, grSats?.framing) : sp;
+      return framing == Framing.CCSDS ? ApplyCcsdsOptions(sp, grSats) : sp;
     }
 
 
     /// <summary>Apply CCSDS-specific carry-through facts (block variant + satyaml overrides) to the
     /// already-classified <see cref="SignalParams"/>. Mirrors <c>ParamResolver.ApplyCcsdsOptions</c>.</summary>
-    private static SignalParams ApplyCcsdsOptions(SignalParams sp, GrSatsInfo? g, string? framingText)
+    private static SignalParams ApplyCcsdsOptions(SignalParams signalParams, GrSatsInfo? grSatsInfo)
     {
-      string ft = framingText ?? "";
-      bool uncoded = ft.Contains("Uncoded", StringComparison.OrdinalIgnoreCase);
-      bool concatenated = ft.Contains("Concatenated", StringComparison.OrdinalIgnoreCase);
-      bool? scrambler = g?.scrambler is string sc
-        ? !sc.Equals("none", StringComparison.OrdinalIgnoreCase)
-        : (bool?)null;
-      bool? precoding = g?.precoding is string pc
-        ? pc.Contains("differential", StringComparison.OrdinalIgnoreCase)
-        : (bool?)null;
-      return sp with
+      string framingText = grSatsInfo?.framing ?? "";
+      bool uncoded = framingText.Contains("Uncoded", StringComparison.OrdinalIgnoreCase);
+      bool concatenated = framingText.Contains("Concatenated", StringComparison.OrdinalIgnoreCase);
+      bool? scrambler = grSatsInfo?.scrambler is string sc ? 
+        !sc.Equals("none", StringComparison.OrdinalIgnoreCase) : null;
+      bool? precoding = grSatsInfo?.precoding is string pc ? 
+        pc.Contains("differential", StringComparison.OrdinalIgnoreCase) : null;
+
+      return signalParams with
       {
         RsEnabled = !uncoded,
-        Convolutional = concatenated ? g?.convolutional ?? "CCSDS" : null,
-        RsInterleaving = g?.rs_interleaving,
+        Convolutional = concatenated ? grSatsInfo?.convolutional ?? "CCSDS" : null,
+        RsInterleaving = grSatsInfo?.rs_interleaving,
         Scrambler = scrambler,
-        Differential = precoding ?? sp.Differential
+        Differential = precoding ?? signalParams.Differential
       };
     }
 
@@ -84,25 +79,27 @@ namespace SkyRoof.Satellites
         if (m.Groups["plain"].Success)
         {
           int v = int.Parse(m.Groups["plain"].Value);
-          if (v is 300 or 600 or 800 or 1200 or 2400 or 4800 or 9600 or 19200) return v;
+          if (v is 300 or 600 or 800 or 1200 or 2400 or 4800 or 9600 or 19200 or 38400) return v;
         }
       }
       return null;
     }
 
-    /// <summary>Map one DB <c>mode</c> / <c>description</c> / gr-satellites string to a deframing flavor (FR-5).</summary>
+    /// <summary>Map one DB <c>mode</c> / <c>description</c> / satyaml string to a deframing flavor.</summary>
     public static Framing ExtractFraming(string? text)
     {
       string s = text ?? "";
 
-      // GOMspace AX100: gr-satellites framing strings "AX100 ASM+Golay" / "AX100 Reed Solomon", or DB
+      // GOMspace AX100: satyaml framing strings "AX100 ASM+Golay" / "AX100 Reed Solomon", or DB
       // descriptions like "GMSK 4k8 AX.100 Mode 5". Mode 5 = ASM+Golay, Mode 6 = the RS framing; plain
       // "AX100" defaults to ASM+Golay (the overwhelmingly common flavor in the wild).
       if (s.Contains("AX100", StringComparison.OrdinalIgnoreCase) ||
           s.Contains("AX.100", StringComparison.OrdinalIgnoreCase))
-        return s.Contains("Reed", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("Mode 6", StringComparison.OrdinalIgnoreCase)
-          ? Framing.AX100RS : Framing.AX100ASM;
+      {
+        bool rs = s.Contains("Reed", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("Mode 6", StringComparison.OrdinalIgnoreCase);
+        return rs ? Framing.AX100RS : Framing.AX100ASM;
+      }
 
       if (s.Contains("CCSDS", StringComparison.OrdinalIgnoreCase))
         return Framing.CCSDS;

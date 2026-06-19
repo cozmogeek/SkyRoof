@@ -17,5 +17,11 @@ namespace SkyRoof
     {
       Pipeline?.Push(args.Data); 
     }
+
+    public override void Dispose()
+    {
+      Pipeline?.Dispose();
+      base.Dispose();
+    }
   }
 }
