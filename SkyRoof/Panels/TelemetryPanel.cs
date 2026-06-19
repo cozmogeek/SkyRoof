@@ -261,7 +261,7 @@ namespace SkyRoof
       string meta = "META:\n" +
         $"  CFO: {frame.CfoHz:F1} Hz\n" +
         $"  SNR: {frame.SnrDb:F1} dB\n" +
-        $"  CRC: {(frame.CrcValid ? "OK" : "FAIL")}\n" +
+        $"  CRC: {frame.CrcValid switch { true => "OK", false => "FAIL", null => "n/a" }}\n" +
         $"  Corrections: {frame.CorrectedBits}\n" +
         $"  Erasures: {frame.ErasedBytes}\n";
 
