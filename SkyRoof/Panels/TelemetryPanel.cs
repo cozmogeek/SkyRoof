@@ -7,7 +7,9 @@ using SkyRoof.Satellites;
 using VE3NEA;
 using VE3NEA.Tlm.Core;
 using VE3NEA.Tlm.Deframing;
+using VE3NEA.Tlm.Telemetry;
 using WeifenLuo.WinFormsUI.Docking;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace SkyRoof
 {
@@ -24,6 +26,7 @@ namespace SkyRoof
     private SignalParams? SignalParams;
     private TelemetryDecocder? Decoder;
     private TreeNode? CurrentTxPass;
+    private TelemetryRegistry? Registry;
 
     internal class TxPassInfo
     {
@@ -53,10 +56,10 @@ namespace SkyRoof
           $"Start: {StartTime:yyyy-MM-dd HH:mm:ss}\n" +
           $"Sat: {Transmitter.Satellite.name}\n" +
           $"Tx: {Transmitter.description}\n" +
-          $"Orbit: {Orbit}\n" +
+          $"Orbit: {Orbit}\n\n" +
           $"Bursts: {BurstCount}\n" +
-          $"Frames: {FrameCount}\n" +
-          $"---\n{paramsStr}";
+          $"Frames: {FrameCount}\n\n" +
+          $"Params:{paramsStr}";
       }
     }
 
@@ -64,6 +67,7 @@ namespace SkyRoof
     //----------------------------------------------------------------------------------------------
     //                                         system
     //----------------------------------------------------------------------------------------------
+    // only for designer
     public TelemetryPanel()
     {
       InitializeComponent();
@@ -75,6 +79,9 @@ namespace SkyRoof
       this.ctx = ctx;
 
       InitializeComponent();
+
+      string path = Path.Combine(Utils.GetUserDataFolder(), "TelemetryRegistry");
+      Registry = new TelemetryRegistry(path);
 
       ctx.TelemetryPanel = this;
       ctx.MainForm.TelemetryMNU.Checked = true;
@@ -124,8 +131,8 @@ namespace SkyRoof
       SignalParams = SignalParamsResolver.Resolve(Transmitter);
       if (SignalParams == null)
       {
-        toolTip1.Hide(SatNameLabel);
-        toolTip1.Hide(StatusLabel);
+        toolTip1.SetToolTip(SatNameLabel,"Parameters unknown");
+        toolTip1.SetToolTip(StatusLabel, "Parameters unknown");
       }
       else
       {
@@ -156,10 +163,10 @@ namespace SkyRoof
     }
 
     private readonly static Modulation[] SupportedModulations = { 
-      Modulation.Fsk, 
-      Modulation.Gfsk, 
-      Modulation.Gmsk, 
-      Modulation.Bpsk 
+      Modulation.FSK, 
+      Modulation.GFSK, 
+      Modulation.GMSK, 
+      Modulation.BPSK 
     };
 
     private bool SignalParamsDecodable()
@@ -218,25 +225,35 @@ namespace SkyRoof
 
     private string BuildFrameText(Frame frame)
     {
+      string tlm = "";
+      var def = Registry?.ForNorad(Satellite?.norad_cat_id);
+      if (def != null)
+      {
+        var record = TelemetryParser.Parse(def, frame.Bytes);
+        if (record != null)
+          tlm = "TELEMETRY:\n" +
+            string.Join("", record.Fields.Select(f => $"  {f.Name}: {f.Value}{(f.Units.Length > 0 ? " " + f.Units : "")}\n")) +
+            "\n";
+      }
 
-      string asc = "ASCII\n" +
-        // frame.Ascii: wrapped every 30 chars, indented by 2 spaces
-        "\n";
+      var chars = frame.Ascii;
+      string asc = "";
+      for (int i = 0; i < chars.Length; i += 28) 
+        asc += "  " + chars.Substring(i, Math.Min(28, chars.Length - i)) + "\n";
+      asc = "ASCII:\n" + asc + "\n";
 
-      string hex = "HEX\n" +
-        // frame.Bytes: 2 spaces, 3 hex digits (offset), 8 hex bytes: "  AAA  BB BB BB BB BB BB BB BB"
-        "\n";
+      var bytes = frame.Bytes;
+      string hex = "";
+      for (int i = 0; i < bytes.Length; i += 8)
+        hex += $"  {i:X3}  " + string.Join(" ", bytes.Skip(i).Take(8).Select(b => b.ToString("X2"))) + "\n";
+      hex = "HEX:\n" + hex + "\n";
 
-      string meta = "META\n" +
-        $"  Time: {frame.TimeSeconds:F3}s\n" +
-        $"  CFO: {frame.CfoHz:F1}Hz\n" +
-        $"  SNR: {frame.SnrDb:F1}dB\n" +
-        $"  Burst: #{frame.BurstIndex}\n" +
+      string meta = "META:\n" +
+        $"  CFO: {frame.CfoHz:F1} Hz\n" +
+        $"  SNR: {frame.SnrDb:F1} dB\n" +
         $"  CRC: {(frame.CrcValid ? "OK" : "FAIL")}\n" +
         $"  Corrections: {frame.CorrectedBits}\n" +
         $"  Erasures: {frame.ErasedBytes}\n";
-
-
 
       return tlm + asc + hex + meta;
     }
@@ -247,7 +264,7 @@ namespace SkyRoof
       CreatDestroyPipeline();
 
       if (Terrestrial) StatusLabel.Text = "not decoded";
-      else if (Decoder == null) StatusLabel.Text = "format not supported";
+      else if (!SignalParamsDecodable()) StatusLabel.Text = "format not supported";
       else if (!SatAboveHorizon) StatusLabel.Text = "satellite below horizon";
       else StatusLabel.Text = "ready to decode";
     }

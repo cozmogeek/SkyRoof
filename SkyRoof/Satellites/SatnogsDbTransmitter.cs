@@ -77,6 +77,9 @@ namespace SkyRoof
         AddLine(sb, "Precoding", gr_sats.precoding);
         AddLine(sb, "RS basis", gr_sats.rs_basis);
         if (gr_sats.frame_size != null) AddLine(sb, "Frame size", gr_sats.frame_size.ToString());
+        AddLine(sb, "Convolutional", gr_sats.convolutional);
+        if (gr_sats.rs_interleaving != null) AddLine(sb, "RS interleaving", gr_sats.rs_interleaving.ToString());
+        AddLine(sb, "Scrambler", gr_sats.scrambler);
         AddLine(sb, "Telemetry", gr_sats.telemetry);
       }
 
@@ -146,6 +149,9 @@ namespace SkyRoof
     public string? precoding { get; set; }    // e.g. "differential" (authoritative differential-vs-coherent)
     public string? rs_basis { get; set; }     // Reed-Solomon field basis: "conventional" / "dual"
     public int? frame_size { get; set; }      // RS/CCSDS frame length in bytes (e.g. 223)
+    public string? convolutional { get; set; }  // CCSDS Concatenated conv convention (e.g. "CCSDS uninverted")
+    public int? rs_interleaving { get; set; }   // CCSDS RS interleaving depth (1/2/4)
+    public string? scrambler { get; set; }      // CCSDS scrambler: "CCSDS" / "none"
   }
 
   public class SatnogsDbTransmitterList : List<SatnogsDbTransmitter> { }

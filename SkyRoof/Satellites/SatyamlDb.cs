@@ -56,6 +56,8 @@ namespace SkyRoof
       string? curPrecoding = null, curRsBasis = null;
       double? curBaud = null, curDev = null;
       int? curFrameSize = null;
+      string? curConvolutional = null, curScrambler = null;
+      int? curRsInterleaving = null;
       var curDataRefs = new List<string>();
 
       void FlushTx()
@@ -70,12 +72,17 @@ namespace SkyRoof
             precoding = curPrecoding,
             rs_basis = curRsBasis,
             frame_size = curFrameSize,
+            convolutional = curConvolutional,
+            rs_interleaving = curRsInterleaving,
+            scrambler = curScrambler,
             telemetry = ResolveTelemetry(curDataRefs, dataAnchors, name, curTxName)
           });
         curMod = curFraming = curTxName = null;
         curPrecoding = curRsBasis = null;
         curBaud = curDev = null;
         curFrameSize = null;
+        curConvolutional = curScrambler = null;
+        curRsInterleaving = null;
         curDataRefs.Clear();
         inTxDataList = haveTx = false;
       }
@@ -154,6 +161,9 @@ namespace SkyRoof
           case "precoding": curPrecoding = Unquote(val); break;
           case "RS basis": curRsBasis = Unquote(val); break;
           case "frame size": curFrameSize = (int?)ParseNum(val); break;
+          case "convolutional": curConvolutional = Unquote(val); break;
+          case "RS interleaving": curRsInterleaving = (int?)ParseNum(val); break;
+          case "scrambler": curScrambler = Unquote(val); break;
         }
       }
       FlushTx();
