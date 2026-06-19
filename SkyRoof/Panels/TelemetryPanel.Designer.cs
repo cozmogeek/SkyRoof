@@ -73,7 +73,7 @@ namespace SkyRoof
       treeView1.ShowNodeToolTips = true;
       treeView1.Size = new Size(247, 526);
       treeView1.TabIndex = 3;
-      treeView1.NodeMouseClick += treeView1_NodeMouseClick;
+      treeView1.AfterSelect += treeView1_AfterSelect;
       // 
       // richTextBox1
       // 

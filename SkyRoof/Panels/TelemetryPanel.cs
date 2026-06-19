@@ -15,7 +15,7 @@ namespace SkyRoof
 {
   public partial class TelemetryPanel : DockContent
   {
-    private static readonly JsonSerializerSettings SerializerParams = 
+    private static readonly JsonSerializerSettings SerializerParams =
       new() { NullValueHandling = NullValueHandling.Ignore };
 
     private readonly Context ctx;
@@ -25,8 +25,9 @@ namespace SkyRoof
     private bool SatAboveHorizon = false;
     private SignalParams? SignalParams;
     private TelemetryDecocder? Decoder;
-    private TreeNode? CurrentTxPass;
+    private TreeNode? CurrentPassNode;
     private TelemetryRegistry? Registry;
+    private TreeNode LastFrameNode;
 
     internal class TxPassInfo
     {
@@ -129,9 +130,10 @@ namespace SkyRoof
       }
 
       SignalParams = SignalParamsResolver.Resolve(Transmitter);
+
       if (SignalParams == null)
       {
-        toolTip1.SetToolTip(SatNameLabel,"Parameters unknown");
+        toolTip1.SetToolTip(SatNameLabel, "Parameters unknown");
         toolTip1.SetToolTip(StatusLabel, "Parameters unknown");
       }
       else
@@ -147,26 +149,31 @@ namespace SkyRoof
       bool needPipeline = !Terrestrial && IsDecodable() && SatAboveHorizon;
       if ((Decoder != null) == needPipeline) return;
 
-      if (Decoder != null) Decoder.Pipeline.FrameDecoded -= FrameDecodedHandler;
+      // destroy decoder
+      if (Decoder != null)
+      {
+        Decoder.Pipeline.FrameDecoded -= FrameDecodedHandler;
+        Decoder.Pipeline.BurstDecoded -= BurstDecodedHandler;
+      }
 
       var old = Decoder;
       Decoder = null;
       old?.Dispose();
 
+      // create new decoder
       if (needPipeline)
       {
         Decoder = new(SignalParams!);
         Decoder.Pipeline.FrameDecoded += FrameDecodedHandler;
         Decoder.Pipeline.BurstDecoded += BurstDecodedHandler;
-
       }
     }
 
-    private readonly static Modulation[] SupportedModulations = { 
-      Modulation.FSK, 
-      Modulation.GFSK, 
-      Modulation.GMSK, 
-      Modulation.BPSK 
+    private readonly static Modulation[] SupportedModulations = {
+      Modulation.FSK,
+      Modulation.GFSK,
+      Modulation.GMSK,
+      Modulation.BPSK
     };
 
     private bool IsDecodable()
@@ -181,7 +188,7 @@ namespace SkyRoof
       BeginInvoke(() =>
         {
           StatusLabel.Text = "decoding...";
-          var txPassInfo = (TxPassInfo?)CurrentTxPass?.Tag;
+          var txPassInfo = (TxPassInfo?)CurrentPassNode?.Tag;
           if (txPassInfo != null) txPassInfo.BurstCount++;
         }
        );
@@ -201,26 +208,29 @@ namespace SkyRoof
     private void AddFrame(Frame frame)
     {
       int orbit = ctx.SdrPasses.GetNextPass(Satellite)?.OrbitNumber ?? -1;
-      var txPassInfo = (TxPassInfo?)CurrentTxPass?.Tag;
+      var txPassInfo = (TxPassInfo?)CurrentPassNode?.Tag;
 
-      if (CurrentTxPass == null || !(txPassInfo!.IsSame(Transmitter, orbit)))
+      if (CurrentPassNode == null || !(txPassInfo!.IsSame(Transmitter, orbit)))
       {
-        CurrentTxPass = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {Transmitter.Satellite.name}  {Transmitter.description}");
+        CurrentPassNode = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {Transmitter.Satellite.name}  {Transmitter.description}");
         txPassInfo = new TxPassInfo(Transmitter, orbit);
         txPassInfo.SignalParams = SignalParams;
-        CurrentTxPass.Tag = txPassInfo;
-        treeView1.Nodes.Add(CurrentTxPass);
+        CurrentPassNode.Tag = txPassInfo;
+        treeView1.Nodes.Add(CurrentPassNode);
       }
 
-      var node = new TreeNode($"{DateTime.Now:HH:mm:ss}  {frame.Length} b  {Ax25Address.Describe(frame.Bytes)}");
-      string frameText = BuildFrameText(frame);
-      node.Tag = frameText;
-      CurrentTxPass.Nodes.Add(node);
-      txPassInfo.FrameCount++;
-      //richTextBox1.Text = frameText;
+      bool mustScroll = LastFrameNode == null || treeView1.SelectedNode == LastFrameNode;
 
-      CurrentTxPass.Expand();
-      treeView1.SelectedNode = node;
+      string addr = SignalParams.Framing == Framing.AX25G3RUH ? Ax25Address.Describe(frame.Bytes) : "";
+      LastFrameNode = new TreeNode($"{DateTime.Now:HH:mm:ss}  {frame.Length} bytes  {addr}");
+      string frameText = BuildFrameText(frame);
+      LastFrameNode.Tag = frameText;
+      CurrentPassNode.Nodes.Add(LastFrameNode);
+      txPassInfo.FrameCount++;
+
+      CurrentPassNode.Expand();
+
+      if (mustScroll) treeView1.SelectedNode = LastFrameNode;
     }
 
     private string BuildFrameText(Frame frame)
@@ -238,7 +248,7 @@ namespace SkyRoof
 
       var chars = frame.Ascii;
       string asc = "";
-      for (int i = 0; i < chars.Length; i += 28) 
+      for (int i = 0; i < chars.Length; i += 28)
         asc += "  " + chars.Substring(i, Math.Min(28, chars.Length - i)) + "\n";
       asc = "ASCII:\n" + asc + "\n";
 
@@ -274,7 +284,7 @@ namespace SkyRoof
       Decoder?.StartProcessing(e);
     }
 
-    private void treeView1_NodeMouseClick(object sender, TreeNodeMouseClickEventArgs e)
+    private void treeView1_AfterSelect(object sender, TreeViewEventArgs e)
     {
       var node = e.Node;
       if (node == null) return;
