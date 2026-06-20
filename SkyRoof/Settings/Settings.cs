@@ -22,6 +22,10 @@ namespace SkyRoof
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public OutputStreamSettings OutputStream { get; set; } = new();
 
+    [DisplayName("Telemetry")]
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public TelemetrySettings Telemetry { get; set; } = new();
+
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public AnnouncerSettings Announcements { get; set; } = new();
 

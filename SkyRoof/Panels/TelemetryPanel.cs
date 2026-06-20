@@ -25,6 +25,7 @@ namespace SkyRoof
     private bool SatAboveHorizon = false;
     private SignalParams? SignalParams;
     private TelemetryDecocder? Decoder;
+    private SatnogsUploader? Uploader;
     private TreeNode? CurrentPassNode;
     private TelemetryRegistry? Registry;
     private TreeNode LastFrameNode;
@@ -87,6 +88,8 @@ namespace SkyRoof
       ctx.TelemetryPanel = this;
       ctx.MainForm.TelemetryMNU.Checked = true;
 
+      Uploader = new SatnogsUploader(ctx);
+
       SetTransmitter();
     }
 
@@ -95,6 +98,9 @@ namespace SkyRoof
       Log.Information("Closing TelemetryPanel");
       ctx.TelemetryPanel = null;
       ctx.MainForm.TelemetryMNU.Checked = false;
+
+      Uploader?.Dispose();
+      Uploader = null;
     }
 
     private void TelemetryPanel_Shown(object sender, EventArgs e)
@@ -196,6 +202,8 @@ namespace SkyRoof
 
     private void FrameDecodedHandler(Frame frame)
     {
+      ctx.KissServer.SendToAll(frame);
+      if (Satellite?.norad_cat_id is int norad) Uploader?.Submit(frame, norad);
       BeginInvoke(() => AddFrame(frame));
     }
 

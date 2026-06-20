@@ -1,0 +1,18 @@
+using System.ComponentModel;
+
+namespace SkyRoof
+{
+  public class TelemetrySettings
+  {
+    [DisplayName("KISS Server")]
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public KissServerSettings KissServer { get; set; } = new();
+
+    [DisplayName("SatNOGS Upload")]
+    [TypeConverter(typeof(ExpandableObjectConverter))]
+    public SatnogsUploaderSettings Satnogs { get; set; } = new();
+
+
+    public override string ToString() { return string.Empty; }
+  }
+}

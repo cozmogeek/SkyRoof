@@ -200,6 +200,9 @@ namespace SkyRoof
       if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.OutputStreamSettings.")))
         ctx.MainForm.ApplyOutputStreamSettings();
 
+      if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.KissServerSettings.")))
+        ctx.MainForm.ApplyKissServerSettings();
+
       if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.AudioSettings.")))
         ctx.MainForm.ApplyAudioSettings();
 

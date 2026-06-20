@@ -1,0 +1,107 @@
+using System.Collections.Concurrent;
+using System.Reflection;
+using Serilog;
+using VE3NEA;
+using VE3NEA.Tlm.Core;
+
+namespace SkyRoof
+{
+  // Uploads decoded telemetry frames to the SatNOGS DB (db.satnogs.org) over the SiDS (Simple Downlink
+  // Share Convention) protocol: one form-urlencoded HTTP POST per frame, authenticated with the user's
+  // permanent SatNOGS DB API key (Authorization: Token <key>). Owned by the TelemetryPanel and disposed
+  // with it, so no uploads happen when the panel is closed. The POSTs run on a single background worker
+  // draining a queue, so they never block the decode or UI thread.
+  public class SatnogsUploader : IDisposable
+  {
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
+    private static readonly string Version =
+      "SkyRoof " + (Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0");
+
+    private readonly Context ctx;
+    private readonly BlockingCollection<Submission> Queue = new();
+    private readonly Task Worker;
+
+    private record Submission(string Url, string Token, byte[] Body, DateTime Timestamp);
+
+
+    public SatnogsUploader(Context ctx)
+    {
+      this.ctx = ctx;
+      Worker = Task.Run(ProcessQueue);
+    }
+
+    public void Dispose()
+    {
+      Queue.CompleteAdding();
+      try { Worker.Wait(TimeSpan.FromSeconds(2)); } catch { }
+      Queue.Dispose();
+    }
+
+
+    //----------------------------------------------------------------------------------------------
+    //                                      submit
+    //----------------------------------------------------------------------------------------------
+    // called on the decode thread (via TelemetryPanel.FrameDecodedHandler); enqueues and returns
+    public void Submit(Frame frame, int noradId)
+    {
+      // gate: skip frames that explicitly failed the integrity check; keep CRC-valid and CRC-less (null)
+      if (frame.CrcValid == false) return;
+
+      var sett = ctx.Settings.Telemetry.Satnogs;
+      var user = ctx.Settings.User;
+
+      if (!sett.Enabled) return;
+      if (string.IsNullOrWhiteSpace(sett.ApiToken)) return;
+      if (string.IsNullOrWhiteSpace(user.Call)) return;
+      if (string.IsNullOrWhiteSpace(user.Square) || !GridSquare.IsValid(user.Square)) return;
+
+      var location = GridSquare.ToGeoPoint(user.Square);
+      var timestamp = DateTime.UtcNow;
+
+      var fields = new Dictionary<string, string>
+      {
+        ["noradID"] = noradId.ToString(),
+        ["source"] = user.Call.Trim().ToUpperInvariant(),
+        ["locator"] = "longLat",
+        ["longitude"] = $"{Math.Abs(location.Longitude):F4}{(location.Longitude >= 0 ? "E" : "W")}",
+        ["latitude"] = $"{Math.Abs(location.Latitude):F4}{(location.Latitude >= 0 ? "N" : "S")}",
+        ["timestamp"] = timestamp.ToString("yyyy-MM-ddTHH:mm:ss.fff") + "Z",
+        ["frame"] = frame.Hex,
+        ["version"] = Version
+      };
+
+      byte[] body = new FormUrlEncodedContent(fields).ReadAsByteArrayAsync().Result;
+
+      if (!Queue.IsAddingCompleted)
+        try { Queue.Add(new Submission(sett.Url, sett.ApiToken.Trim(), body, timestamp)); }
+        catch (InvalidOperationException) { }
+    }
+
+
+    //----------------------------------------------------------------------------------------------
+    //                                      worker
+    //----------------------------------------------------------------------------------------------
+    private void ProcessQueue()
+    {
+      foreach (var item in Queue.GetConsumingEnumerable())
+        try { Post(item); }
+        catch (Exception e) { Log.Warning(e, "SatNOGS upload failed"); }
+    }
+
+    private void Post(Submission item)
+    {
+      using var content = new ByteArrayContent(item.Body);
+      content.Headers.ContentType = new("application/x-www-form-urlencoded");
+
+      using var request = new HttpRequestMessage(HttpMethod.Post, item.Url) { Content = content };
+      request.Headers.TryAddWithoutValidation("Authorization", $"Token {item.Token}");
+
+      using var response = Http.Send(request);
+
+      if (response.IsSuccessStatusCode)
+        Log.Debug($"SatNOGS frame uploaded ({(int)response.StatusCode}) at {item.Timestamp:HH:mm:ss}");
+      else
+        Log.Warning($"SatNOGS upload rejected: HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
+    }
+  }
+}

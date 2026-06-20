@@ -52,7 +52,8 @@ namespace SkyRoof
     public readonly OutputSoundcard<Complex32> IqVacSoundcard = new();
     public readonly Announcer Announcer = new();
     public UdpStreamSender UdpStreamSender = new();
-    
+    public readonly KissServer KissServer = new();
+
     public void ClosePanels()
     {
       Ft4ConsolePanel?.Close();

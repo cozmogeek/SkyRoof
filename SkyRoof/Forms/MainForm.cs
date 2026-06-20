@@ -56,6 +56,7 @@ namespace SkyRoof
 
       ApplyAudioSettings();
       ApplyOutputStreamSettings();
+      ApplyKissServerSettings();
       ctx.CatControl.ApplySettings();
       ctx.RotatorControl.ApplySettings();
 
@@ -109,6 +110,7 @@ namespace SkyRoof
       ctx.SpeakerSoundcard.Dispose();
       ctx.AudioVacSoundcard?.Dispose();
       ctx.IqVacSoundcard?.Dispose();
+      ctx.KissServer.Dispose();
       Fft<Complex32>.SaveWisdom();
     }
 
@@ -394,6 +396,14 @@ namespace SkyRoof
       GainWidget.ApplyAfGain();
       ctx.SpeakerSoundcard.Enabled = ctx.Settings.Audio.SpeakerEnabled;
       if (ctx.Slicer != null) ctx.Slicer.Squelch.Enabled = ctx.Settings.Audio.Squelch;
+    }
+
+    internal void ApplyKissServerSettings()
+    {
+      var sett = ctx.Settings.Telemetry.KissServer;
+
+      if (sett.Enabled) ctx.KissServer.Start(sett.Port);
+      else ctx.KissServer.Stop();
     }
 
     internal void ApplyOutputStreamSettings()
