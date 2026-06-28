@@ -115,6 +115,7 @@ namespace SkyRoof
       StartPosition = FormStartPosition.CenterParent;
       Text = "Telemetry";
       FormClosing += TelemetryPanel_FormClosing;
+      splitContainer1.Panel1.ResumeLayout(false);
       splitContainer1.Panel2.ResumeLayout(false);
       ((System.ComponentModel.ISupportInitialize)splitContainer1).EndInit();
       splitContainer1.ResumeLayout(false);

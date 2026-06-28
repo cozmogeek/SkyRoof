@@ -35,6 +35,7 @@ namespace SkyRoof
       internal SignalParams? SignalParams;
       internal int BurstCount = 0;
       internal int FrameCount = 0;
+      internal bool HasValidFrame = false;
 
       internal TxPassInfo(SatnogsDbTransmitter transmitter, int orbit)
       {
@@ -187,8 +188,11 @@ namespace SkyRoof
       BeginInvoke(() =>
         {
           StatusLabel.Text = "decoding...";
-          var txPassInfo = (TxPassInfo?)CurrentPassNode?.Tag;
-          if (txPassInfo != null) txPassInfo.BurstCount++;
+          // create the pass entry on the first burst (grayed until a valid frame arrives), not on the first frame
+          var txPassInfo = EnsureCurrentPassNode();
+          txPassInfo.BurstCount++;
+          // refresh the right panel if this pass entry is the one currently selected
+          if (treeView1.SelectedNode == CurrentPassNode) richTextBox1.Text = txPassInfo.Describe();
         }
        );
     }
@@ -208,16 +212,13 @@ namespace SkyRoof
     //----------------------------------------------------------------------------------------------
     private void AddFrame(Frame frame)
     {
-      int orbit = ctx.SdrPasses.GetNextPass(Satellite)?.OrbitNumber ?? -1;
-      var txPassInfo = (TxPassInfo?)CurrentPassNode?.Tag;
+      var txPassInfo = EnsureCurrentPassNode();
 
-      if (CurrentPassNode == null || !(txPassInfo!.IsSame(Transmitter, orbit)))
+      // un-gray the pass entry once the first valid frame of the pass is decoded
+      if (!txPassInfo.HasValidFrame)
       {
-        CurrentPassNode = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {Transmitter.Satellite.name}  {Transmitter.description}");
-        txPassInfo = new TxPassInfo(Transmitter, orbit);
-        txPassInfo.SignalParams = SignalParams;
-        CurrentPassNode.Tag = txPassInfo;
-        treeView1.Nodes.Add(CurrentPassNode);
+        txPassInfo.HasValidFrame = true;
+        CurrentPassNode!.ForeColor = Color.Empty;
       }
 
       bool mustScroll = LastFrameNode == null || treeView1.SelectedNode == LastFrameNode;
@@ -232,6 +233,27 @@ namespace SkyRoof
       CurrentPassNode.Expand();
 
       if (mustScroll) treeView1.SelectedNode = LastFrameNode;
+      else if (treeView1.SelectedNode == CurrentPassNode) richTextBox1.Text = txPassInfo.Describe();
+    }
+
+    /// <summary>Returns the current pass node's info, creating the pass node (grayed until the first valid
+    /// frame) when this is the first burst or frame of a new transmitter+orbit pass.</summary>
+    private TxPassInfo EnsureCurrentPassNode()
+    {
+      int orbit = ctx.SdrPasses.GetNextPass(Satellite)?.OrbitNumber ?? -1;
+      var txPassInfo = (TxPassInfo?)CurrentPassNode?.Tag;
+
+      if (CurrentPassNode == null || !(txPassInfo!.IsSame(Transmitter, orbit)))
+      {
+        CurrentPassNode = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {Transmitter.Satellite.name}  {Transmitter.description}");
+        CurrentPassNode.ForeColor = Color.Gray;
+        txPassInfo = new TxPassInfo(Transmitter, orbit);
+        txPassInfo.SignalParams = SignalParams;
+        CurrentPassNode.Tag = txPassInfo;
+        treeView1.Nodes.Add(CurrentPassNode);
+      }
+
+      return txPassInfo!;
     }
 
     private string BuildFrameText(Frame frame)
