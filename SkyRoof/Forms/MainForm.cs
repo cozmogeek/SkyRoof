@@ -402,8 +402,8 @@ namespace SkyRoof
     {
       var sett = ctx.Settings.Telemetry.KissServer;
 
-      if (sett.Enabled) ctx.KissServer.Start(sett.Port);
-      else ctx.KissServer.Stop();
+      ctx.KissServer.Stop(); 
+      if (sett.Enabled) ctx.KissServer.Start(sett.Port);      
     }
 
     internal void ApplyOutputStreamSettings()

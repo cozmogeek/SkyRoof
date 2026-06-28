@@ -48,6 +48,8 @@ namespace SkyRoof
 
     public void Stop()
     {
+      if (!Active) return;
+
       Active = false;
       Listener?.Stop();
       Listener = null;

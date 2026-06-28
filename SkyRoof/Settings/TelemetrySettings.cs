@@ -10,7 +10,7 @@ namespace SkyRoof
 
     [DisplayName("SatNOGS Upload")]
     [TypeConverter(typeof(ExpandableObjectConverter))]
-    public SatnogsUploaderSettings Satnogs { get; set; } = new();
+    public SatnogsUploaderSettings SatnogsUploader { get; set; } = new();
 
 
     public override string ToString() { return string.Empty; }

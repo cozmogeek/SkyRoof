@@ -1,15 +1,12 @@
 using MathNet.Numerics;
-using MathNet.Numerics.Optimization.TrustRegion;
 using Newtonsoft.Json;
 using Serilog;
-using SGPdotNET.Observation;
 using SkyRoof.Satellites;
 using VE3NEA;
 using VE3NEA.Tlm.Core;
 using VE3NEA.Tlm.Deframing;
 using VE3NEA.Tlm.Telemetry;
 using WeifenLuo.WinFormsUI.Docking;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace SkyRoof
 {
@@ -25,9 +22,9 @@ namespace SkyRoof
     private bool SatAboveHorizon = false;
     private SignalParams? SignalParams;
     private TelemetryDecocder? Decoder;
-    private SatnogsUploader? Uploader;
+    private SatnogsUploader? SatnogsUploader;
     private TreeNode? CurrentPassNode;
-    private TelemetryRegistry? Registry;
+    private TelemetryRegistry? TelemetryRegistry;
     private TreeNode LastFrameNode;
 
     internal class TxPassInfo
@@ -83,12 +80,12 @@ namespace SkyRoof
       InitializeComponent();
 
       string path = Path.Combine(Utils.GetUserDataFolder(), "TelemetryRegistry");
-      Registry = new TelemetryRegistry(path);
+      TelemetryRegistry = new TelemetryRegistry(path);
 
       ctx.TelemetryPanel = this;
       ctx.MainForm.TelemetryMNU.Checked = true;
 
-      Uploader = new SatnogsUploader(ctx);
+      SatnogsUploader = new SatnogsUploader(ctx);
 
       SetTransmitter();
     }
@@ -99,14 +96,10 @@ namespace SkyRoof
       ctx.TelemetryPanel = null;
       ctx.MainForm.TelemetryMNU.Checked = false;
 
-      Uploader?.Dispose();
-      Uploader = null;
+      SatnogsUploader?.Dispose();
+      SatnogsUploader = null;
     }
 
-    private void TelemetryPanel_Shown(object sender, EventArgs e)
-    {
-
-    }
 
 
 
@@ -203,7 +196,7 @@ namespace SkyRoof
     private void FrameDecodedHandler(Frame frame)
     {
       ctx.KissServer.SendToAll(frame);
-      if (Satellite?.norad_cat_id is int norad) Uploader?.Submit(frame, norad);
+      if (Satellite?.norad_cat_id is int norad) SatnogsUploader?.Submit(frame, norad);
       BeginInvoke(() => AddFrame(frame));
     }
 
@@ -244,7 +237,7 @@ namespace SkyRoof
     private string BuildFrameText(Frame frame)
     {
       string tlm = "";
-      var def = Registry?.ForNorad(Satellite?.norad_cat_id);
+      var def = TelemetryRegistry?.ForNorad(Satellite?.norad_cat_id);
       if (def != null)
       {
         var record = TelemetryParser.Parse(def, frame.Bytes);

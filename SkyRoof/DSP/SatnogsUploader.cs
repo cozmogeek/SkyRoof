@@ -47,7 +47,7 @@ namespace SkyRoof
       // gate: skip frames that explicitly failed the integrity check; keep CRC-valid and CRC-less (null)
       if (frame.CrcValid == false) return;
 
-      var sett = ctx.Settings.Telemetry.Satnogs;
+      var sett = ctx.Settings.Telemetry.SatnogsUploader;
       var user = ctx.Settings.User;
 
       if (!sett.Enabled) return;
@@ -90,6 +90,8 @@ namespace SkyRoof
 
     private void Post(Submission item)
     {
+      if (!ctx.Settings.Telemetry.SatnogsUploader.Enabled) return;
+
       using var content = new ByteArrayContent(item.Body);
       content.Headers.ContentType = new("application/x-www-form-urlencoded");
 
