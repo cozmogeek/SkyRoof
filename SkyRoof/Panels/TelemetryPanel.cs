@@ -26,6 +26,7 @@ namespace SkyRoof
     private TreeNode? CurrentPassNode;
     private TelemetryRegistry? TelemetryRegistry;
     private TreeNode LastFrameNode;
+    private ILogger? FrameLogger;
 
     internal class TxPassInfo
     {
@@ -99,6 +100,9 @@ namespace SkyRoof
 
       SatnogsUploader?.Dispose();
       SatnogsUploader = null;
+
+      (FrameLogger as IDisposable)?.Dispose();
+      FrameLogger = null;
     }
 
 
@@ -224,11 +228,14 @@ namespace SkyRoof
       bool mustScroll = LastFrameNode == null || treeView1.SelectedNode == LastFrameNode;
 
       string addr = SignalParams.Framing == Framing.AX25G3RUH ? Ax25Address.Describe(frame.Bytes) : "";
-      LastFrameNode = new TreeNode($"{DateTime.Now:HH:mm:ss}  {frame.Length} bytes  {addr}");
+      string nodeText = $"{DateTime.Now:HH:mm:ss}  {frame.Length} bytes  {addr}";
+      LastFrameNode = new TreeNode(nodeText);
       string frameText = BuildFrameText(frame);
       LastFrameNode.Tag = frameText;
       CurrentPassNode.Nodes.Add(LastFrameNode);
       txPassInfo.FrameCount++;
+
+      SaveFrameToFile(frame, addr, frameText);
 
       CurrentPassNode.Expand();
 
@@ -289,6 +296,37 @@ namespace SkyRoof
         $"  Erasures: {frame.ErasedBytes}\n";
 
       return tlm + asc + hex + meta;
+    }
+
+
+
+
+    //----------------------------------------------------------------------------------------------
+    //                                       save to file
+    //----------------------------------------------------------------------------------------------
+    // mirror everything shown in the tree to the file: the date and time, satellite, transmitter
+    // and frame length in the header, the frame address (if any), then the frame detail shown in the
+    // right pane
+    private void SaveFrameToFile(Frame frame, string addr, string frameText)
+    {
+      if (!ctx.Settings.Telemetry.ArchiveToFile) return;
+
+      FrameLogger ??= CreateFrameLogger();
+
+      string header = $"Sat: {Transmitter.Satellite.name}  Tx: \"{Transmitter.description}\"  Frame: {frame.Length} bytes" +
+        (addr.Length > 0 ? $"  {addr}" : "");
+      FrameLogger.Information("{Header}\n{Body}", header, frameText);
+    }
+
+    private static ILogger CreateFrameLogger()
+    {
+      string fileName = Path.Combine(Utils.GetUserDataFolder(), "TelemetryDecodes", "frames_.txt");
+      return new LoggerConfiguration()
+        .WriteTo.File(fileName,
+          rollingInterval: RollingInterval.Day,
+          outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss}  {Message:lj}{NewLine}",
+          shared: true)
+        .CreateLogger();
     }
 
     internal void UpdateTxStatus()

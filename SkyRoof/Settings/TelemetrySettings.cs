@@ -4,6 +4,11 @@ namespace SkyRoof
 {
   public class TelemetrySettings
   {
+    [DisplayName("Save to File")]
+    [Description("Save decoded frames to a file")]
+    [DefaultValue(false)]
+    public bool ArchiveToFile { get; set; }
+
     [DisplayName("KISS Server")]
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public KissServerSettings KissServer { get; set; } = new();
