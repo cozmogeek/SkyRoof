@@ -55,7 +55,7 @@ namespace SkyRoof
 
         return
           $"Start: {StartTime:yyyy-MM-dd HH:mm:ss}\n" +
-          $"Sat: {Transmitter.Satellite.name}\n" +
+          $"Sat: {Transmitter?.Satellite?.name ?? "Unknown"}\n" +
           $"Tx: {Transmitter.description}\n" +
           $"Orbit: {Orbit}\n\n" +
           $"Bursts: {BurstCount}\n" +
@@ -227,7 +227,7 @@ namespace SkyRoof
 
       bool mustScroll = LastFrameNode == null || treeView1.SelectedNode == LastFrameNode;
 
-      string addr = SignalParams.Framing == Framing.AX25G3RUH ? Ax25Address.Describe(frame.Bytes) : "";
+      string addr = (SignalParams.Framing == Framing.AX25G3RUH ? Ax25Address.Describe(frame.Bytes) : "") ?? "";
       string nodeText = $"{DateTime.Now:HH:mm:ss}  {frame.Length} bytes  {addr}";
       LastFrameNode = new TreeNode(nodeText);
       string frameText = BuildFrameText(frame);
