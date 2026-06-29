@@ -314,7 +314,7 @@ namespace SkyRoof
       FrameLogger ??= CreateFrameLogger();
 
       string header = $"Sat: {Transmitter.Satellite.name}  Tx: \"{Transmitter.description}\"  Frame: {frame.Length} bytes" +
-        (addr.Length > 0 ? $"  {addr}" : "");
+        (addr.Length > 0 ? $"  Addr: {addr}" : "");
       FrameLogger.Information("{Header}\n{Body}", header, frameText);
     }
 

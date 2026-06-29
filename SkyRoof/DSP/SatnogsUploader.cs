@@ -105,7 +105,7 @@ namespace SkyRoof
       using var response = Http.Send(request);
 
       if (response.IsSuccessStatusCode)
-        Log.Debug($"SatNOGS frame uploaded ({(int)response.StatusCode}) at {item.Timestamp:HH:mm:ss}");
+        Log.Information($"SatNOGS frame uploaded ({(int)response.StatusCode}) at {item.Timestamp:HH:mm:ss}");
       else
         Log.Warning($"SatNOGS upload rejected: HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
     }
