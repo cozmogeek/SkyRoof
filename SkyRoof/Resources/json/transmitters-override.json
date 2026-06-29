@@ -32,5 +32,12 @@
     "baudrate": 800,
     "deviation": 800,
     "framing": "Hades"
+  },
+  "VBQcjiP9kmyGV4YvzweJSS": {
+    "satellite": "HADES-SA",
+    "norad": 68446,
+    "baudrate": 200,
+    "deviation": 562.5,
+    "framing": "Hades"
   }
 }
