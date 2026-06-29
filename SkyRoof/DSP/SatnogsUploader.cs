@@ -13,6 +13,10 @@ namespace SkyRoof
   // draining a queue, so they never block the decode or UI thread.
   public class SatnogsUploader : IDisposable
   {
+    // production SatNOGS DB telemetry endpoint (SiDS); independent forwarders must use production,
+    // not the db-dev staging server (which exists only to test the SatNOGS platform itself)
+    private const string Url = "https://db.satnogs.org/api/telemetry/";
+
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
     private static readonly string Version =
       "SkyRoof " + (Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0");
@@ -21,7 +25,7 @@ namespace SkyRoof
     private readonly BlockingCollection<Submission> Queue = new();
     private readonly Task Worker;
 
-    private record Submission(string Url, string Token, byte[] Body, DateTime Timestamp);
+    private record Submission(string Token, byte[] Body, DateTime Timestamp);
 
 
     public SatnogsUploader(Context ctx)
@@ -73,7 +77,7 @@ namespace SkyRoof
       byte[] body = new FormUrlEncodedContent(fields).ReadAsByteArrayAsync().Result;
 
       if (!Queue.IsAddingCompleted)
-        try { Queue.Add(new Submission(sett.Url, sett.ApiToken.Trim(), body, timestamp)); }
+        try { Queue.Add(new Submission(sett.ApiToken.Trim(), body, timestamp)); }
         catch (InvalidOperationException) { }
     }
 
@@ -95,7 +99,7 @@ namespace SkyRoof
       using var content = new ByteArrayContent(item.Body);
       content.Headers.ContentType = new("application/x-www-form-urlencoded");
 
-      using var request = new HttpRequestMessage(HttpMethod.Post, item.Url) { Content = content };
+      using var request = new HttpRequestMessage(HttpMethod.Post, Url) { Content = content };
       request.Headers.TryAddWithoutValidation("Authorization", $"Token {item.Token}");
 
       using var response = Http.Send(request);
