@@ -20,6 +20,8 @@ namespace SkyRoof
     public ListViewItem[] Items;
     // shared, so we don't leak a GDI font handle per item on every rebuild
     private Font BoldFont, StrikeoutFont;
+    // sat the context menu was opened on, captured at Opening time (see SatelliteDetailsMNU_Click)
+    private SatnogsDbSatellite? ContextMenuSat;
 
 
 
@@ -204,13 +206,17 @@ namespace SkyRoof
 
     private void SatelliteDetailsMNU_Click(object sender, EventArgs e)
     {
-      var data = (ItemData)Items[listView1.SelectedIndices[0]].Tag!;
-      SatelliteDetailsForm.ShowSatellite(data.Sat, ctx.MainForm);
+      // use the sat captured when the menu opened: a timer-driven list rebuild
+      // (UpdatePassTimes -> SortItems) can clear SelectedIndices while the menu is open
+      if (ContextMenuSat == null) return;
+      SatelliteDetailsForm.ShowSatellite(ContextMenuSat, ctx.MainForm);
     }
 
     private void contextMenuStrip1_Opening(object sender, System.ComponentModel.CancelEventArgs e)
     {
-      if (listView1.SelectedIndices.Count == 0) e.Cancel = true;
+      if (listView1.SelectedIndices.Count == 0) { e.Cancel = true; ContextMenuSat = null; return; }
+
+      ContextMenuSat = ((ItemData)Items[listView1.SelectedIndices[0]].Tag!).Sat;
     }
 
     private void GroupViewPanel_MouseClick(object sender, MouseEventArgs e)
