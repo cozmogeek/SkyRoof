@@ -35,10 +35,13 @@ namespace SkyRoof
       treeView1 = new TreeView();
       richTextBox1 = new RichTextBox();
       splitContainer1 = new SplitContainer();
+      MenuStrip = new ContextMenuStrip(components);
+      ClearAllMNU = new ToolStripMenuItem();
       ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
       splitContainer1.Panel1.SuspendLayout();
       splitContainer1.Panel2.SuspendLayout();
       splitContainer1.SuspendLayout();
+      MenuStrip.SuspendLayout();
       SuspendLayout();
       // 
       // SatNameLabel
@@ -65,6 +68,7 @@ namespace SkyRoof
       // 
       // treeView1
       // 
+      treeView1.ContextMenuStrip = MenuStrip;
       treeView1.Dock = DockStyle.Fill;
       treeView1.FullRowSelect = true;
       treeView1.HideSelection = false;
@@ -103,6 +107,19 @@ namespace SkyRoof
       splitContainer1.SplitterDistance = 247;
       splitContainer1.TabIndex = 5;
       // 
+      // MenuStrip
+      // 
+      MenuStrip.Items.AddRange(new ToolStripItem[] { ClearAllMNU });
+      MenuStrip.Name = "ClearAllMNU";
+      MenuStrip.Size = new Size(181, 48);
+      // 
+      // ClearAllMNU
+      // 
+      ClearAllMNU.Name = "ClearAllMNU";
+      ClearAllMNU.Size = new Size(180, 22);
+      ClearAllMNU.Text = "Clear All";
+      ClearAllMNU.Click += ClearAllMNU_Click;
+      // 
       // TelemetryPanel
       // 
       AutoScaleDimensions = new SizeF(7F, 15F);
@@ -119,6 +136,7 @@ namespace SkyRoof
       splitContainer1.Panel2.ResumeLayout(false);
       ((System.ComponentModel.ISupportInitialize)splitContainer1).EndInit();
       splitContainer1.ResumeLayout(false);
+      MenuStrip.ResumeLayout(false);
       ResumeLayout(false);
     }
 
@@ -129,5 +147,7 @@ namespace SkyRoof
     private TreeView treeView1;
     private RichTextBox richTextBox1;
     private SplitContainer splitContainer1;
+    private ContextMenuStrip MenuStrip;
+    private ToolStripMenuItem ClearAllMNU;
   }
 }

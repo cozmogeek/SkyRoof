@@ -320,5 +320,13 @@ namespace SkyRoof
       else
         richTextBox1.Text = (string)node!.Tag!;
     }
+
+    private void ClearAllMNU_Click(object sender, EventArgs e)
+    {
+      LastFrameNode = null;
+      CurrentPassNode = null;
+      richTextBox1.Clear();
+      treeView1.Nodes.Clear();
+    }
   }
 }
