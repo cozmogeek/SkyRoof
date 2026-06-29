@@ -15,7 +15,7 @@ sharing over a KISS server, and uploading to SatNOGS — are configured as descr
 
 ## Supported Signals
 
-The decoder supports the **FSK**, **GFSK**, **GMSK**, and **BPSK** modulations with the framing
+The decoder supports the **FSK**, **GFSK**, **MSK**, **GMSK**, **AFSK**, **BPSK** and **DBPSK** modulations with the framing
 formats used by the supported satellites. The modulation, baud rate, and framing are looked up
 automatically from the transmitter description in the satellite database, so there is nothing to
 configure for the signal itself — you only have to select the right transmitter.
@@ -30,8 +30,15 @@ reports `format not supported`, and no decoding takes place.
 2. Select the satellite in the [Satellite Selector](satellite_selector.md) on the toolbar.
 
 3. Select a data transmitter for that satellite. The decoder follows the transmitter selection, so
-   pick the transmitter whose telemetry you want to decode. The panel header shows the satellite name
-   and the selected transmitter; hover over it to see the resolved signal parameters.
+   pick the transmitter whose telemetry you want to decode. You can select it in the
+   [Satellite Transmitters](satellite_transmitters_panel.md) panel, or by clicking on its label on the
+   [frequency scale](frequency_scale.md). The panel header shows the satellite name and the selected
+   transmitter; hover over it to see the resolved signal parameters.
+
+   Many satellites have several transmitters on the same frequency, and only some of them may be
+   supported by the decoder. The label you click on the frequency scale is not necessarily the one
+   that gets selected, so after clicking check that the right transmitter is highlighted in the
+   [Satellite Transmitters](satellite_transmitters_panel.md) panel.
 
 4. Make sure the SDR is running and tuned to the satellite. The decoder uses the same
    Doppler-corrected passband as the receiver, so the satellite's signal must be visible on the
@@ -47,7 +54,8 @@ supported transmitter is selected, frames are decoded automatically and appear i
 
 - The **status line** below the header shows the current state of the decoder:
 
-  - **satellite below horizon** — decoding is paused until the satellite rises;
+  - **satellite below horizon** — the format is supported and the decoder is waiting for AOS;
+    decoding starts when the satellite rises above the horizon;
   - **ready to decode** — the satellite is up and the decoder is listening;
   - **decoding...** — a burst is being processed;
   - **format not supported** — the transmitter's modulation or framing is not supported;

@@ -69,5 +69,3 @@ contribute the frames that SkyRoof decodes:
 ## See Also
 
 - [Telemetry Panel](telemetry_panel.md)
-- [Decode Telemetry with gr_satellites](decode_telemetry.md)
-- [Receive FSK & AFSK Telemetry with UZ7HO Sound Modems](fsk_afsk_telemetry.md)
