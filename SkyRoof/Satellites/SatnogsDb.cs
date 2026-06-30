@@ -37,7 +37,9 @@ namespace SkyRoof
 
       // seed the user-editable transmitter overrides file from the embedded default on first run
       string txOverrideFile = Path.Combine(DataFolder, "transmitters-override.json");
-      if (!File.Exists(txOverrideFile)) File.WriteAllBytes(txOverrideFile, Properties.Resources.transmitters_override);
+
+      //if (!File.Exists(txOverrideFile)) 
+        File.WriteAllBytes(txOverrideFile, Properties.Resources.transmitters_override);
 
       JsonSettings.Converters.Add(new IsoDateTimeConverter { DateTimeFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ssK" });
 

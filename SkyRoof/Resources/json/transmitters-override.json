@@ -39,5 +39,12 @@
     "baudrate": 200,
     "deviation": 562.5,
     "framing": "Hades"
+  },
+  "a5nA6sjzKTeqPgxoWQ4TyE": {
+    "satellite": "CUTE",
+    "norad": 49263,
+    "modulation": "FSK",
+    "deviation": 4800,
+    "note": "unfiltered FSK, 4800 Hz deviation (SatNOGS 'GFSK9k6' is wrong)"
   }
 }
