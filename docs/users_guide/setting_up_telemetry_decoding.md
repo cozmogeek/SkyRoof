@@ -53,9 +53,9 @@ contribute the frames that SkyRoof decodes:
 
 5. **Verify on the server.** Confirm that your frames arrived, either way:
 
-   - **Web:** open the satellite's page on [db.satnogs.org](https://db.satnogs.org/) and look at its
-     recent telemetry; your frames are listed with your callsign as the source and a timestamp that
-     matches the pass.
+   - **Web:** open the satellite's page on [db.satnogs.org](https://db.satnogs.org/) 
+     (for example, by clicking on the **SatNOGS** link in the [Satellite Details panel](satellite_details_panel.md)),
+     click on **Data** and see if you are listed under **Most Recent Observers**.
 
    - **API:** query the telemetry endpoint for that satellite and look for your callsign in the
      `source` field of the most recent frames, for example:
