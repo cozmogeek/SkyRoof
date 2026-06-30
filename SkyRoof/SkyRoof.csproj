@@ -179,9 +179,25 @@
     <Folder Include="ControlsEx\ColorSpace\" />
   </ItemGroup>
 
+  <!-- The VE3NEA.Tlm solution owns/builds VE3NEA.Tlm.dll; SkyRoof never builds it, it only references the
+       vendored copy under Vendor\VE3NEA.Tlm. On the maintainer's machine (where the sibling repo is present)
+       the copy is refreshed from that solution's latest build; Inputs/Outputs make it run only when the built
+       dll is newer (date-gated). Forks/CI have no sibling build → the committed Vendor copy is used as-is. -->
+  <PropertyGroup>
+    <TlmRepoDll>$(MSBuildThisFileDirectory)..\..\VE3NEA.Tlm\VE3NEA.Tlm\bin\x64\$(Configuration)\net10.0-windows\VE3NEA.Tlm.dll</TlmRepoDll>
+    <TlmVendorDir>$(MSBuildThisFileDirectory)..\Vendor\VE3NEA.Tlm\</TlmVendorDir>
+  </PropertyGroup>
+
+  <Target Name="RefreshVendoredTlm" BeforeTargets="ResolveAssemblyReferences"
+          Condition="Exists('$(TlmRepoDll)')"
+          Inputs="$(TlmRepoDll)" Outputs="$(TlmVendorDir)VE3NEA.Tlm.dll">
+    <Copy SourceFiles="$(TlmRepoDll)" DestinationFolder="$(TlmVendorDir)" SkipUnchangedFiles="true" />
+  </Target>
+
   <ItemGroup>
     <Reference Include="VE3NEA.Tlm">
-      <HintPath>..\..\..\Try\FskDemod\FskDemod\bin\x64\Debug\net10.0-windows\VE3NEA.Tlm.dll</HintPath>
+      <HintPath>$(TlmVendorDir)VE3NEA.Tlm.dll</HintPath>
+      <Private>true</Private>
     </Reference>
   </ItemGroup>
 
