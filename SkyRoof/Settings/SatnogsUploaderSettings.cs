@@ -5,6 +5,7 @@ namespace SkyRoof
   public class SatnogsUploaderSettings
   {
     [Description("Upload decoded telemetry frames to the SatNOGS DB (db.satnogs.org). Requires a SatNOGS-DB API key")]
+    [DefaultValue(false)]
     public bool Enabled { get; set; } = false;
 
     [DisplayName("API Key")]

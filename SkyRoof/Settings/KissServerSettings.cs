@@ -5,6 +5,7 @@ namespace SkyRoof
   public class KissServerSettings
   {
     [Description("Share decoded telemetry frames over a KISS-over-TCP server")]
+    [DefaultValue(false)]
     public bool Enabled { get; set; } = false;
 
     [DisplayName("TCP Port")]
