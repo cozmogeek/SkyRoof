@@ -48,6 +48,15 @@ namespace VE3NEA
       StartProcessing();
     }
 
+    // discard any queued items without processing them, returning their buffers to the pool. used when the
+    // input becomes stale (e.g. the tuning or transmitter changed) so the backlog is dropped, not decoded.
+    // safe to call while the worker runs: the queue and the pool are both concurrent collections.
+    public void Purge()
+    {
+      while (Queue.TryDequeue(out DataEventArgs<T> args))
+        ArgsPool.Return(args);
+    }
+
     private void ProcessingThreadProcedure()
     {
       while (true)

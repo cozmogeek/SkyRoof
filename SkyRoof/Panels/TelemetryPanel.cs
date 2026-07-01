@@ -27,6 +27,25 @@ namespace SkyRoof
     private TelemetryRegistry? TelemetryRegistry;
     private TreeNode LastFrameNode;
     private ILogger? FrameLogger;
+    private DecodeSnapshot? CurrentDecode;
+
+    // Identity of the transmitter a decoder was built for, captured when the pipeline is created and bound to
+    // that pipeline's event handlers. Frames surface on the decode worker thread, possibly after the user has
+    // switched to a different transmitter; carrying the snapshot with the frame keeps it attributed to the
+    // transmitter that actually produced it instead of to whatever is selected when the frame arrives.
+    private sealed class DecodeSnapshot
+    {
+      internal readonly SatnogsDbSatellite? Satellite;
+      internal readonly SatnogsDbTransmitter Transmitter;
+      internal readonly SignalParams SignalParams;
+
+      internal DecodeSnapshot(SatnogsDbSatellite? satellite, SatnogsDbTransmitter transmitter, SignalParams signalParams)
+      {
+        Satellite = satellite;
+        Transmitter = transmitter;
+        SignalParams = signalParams;
+      }
+    }
 
     internal class TxPassInfo
     {
@@ -98,6 +117,11 @@ namespace SkyRoof
       ctx.TelemetryPanel = null;
       ctx.MainForm.TelemetryMNU.Checked = false;
 
+      // stop and free the decode pipeline (joins its worker thread and releases native FFTW memory)
+      Decoder?.Dispose();
+      Decoder = null;
+      CurrentDecode = null;
+
       SatnogsUploader?.Dispose();
       SatnogsUploader = null;
 
@@ -159,25 +183,35 @@ namespace SkyRoof
     private void CreatDestroyPipeline()
     {
       bool needPipeline = !Terrestrial && IsDecodable() && SatAboveHorizon;
-      if ((Decoder != null) == needPipeline) return;
 
-      // destroy decoder
+      // keep the existing decoder only if it was built for the currently selected transmitter. a transmitter
+      // change must rebuild the pipeline: otherwise it keeps decoding with the previous transmitter's params
+      // and its frames get attributed to the newly selected transmitter (wrong sat/norad/telemetry parser).
+      bool matches = Decoder != null && CurrentDecode != null && CurrentDecode.Transmitter.uuid == Transmitter.uuid;
+
+      if (needPipeline && matches) return;
+      if (!needPipeline && Decoder == null) return;
+
+      // destroy the existing decoder: purge its queued IQ (recorded for the old transmitter / tuning) so the
+      // backlog is discarded rather than decoded and mis-attributed, then dispose it
       if (Decoder != null)
       {
-        Decoder.Pipeline.FrameDecoded -= FrameDecodedHandler;
-        Decoder.Pipeline.BurstDecoded -= BurstDecodedHandler;
+        Decoder.Purge();
+        var old = Decoder;
+        Decoder = null;
+        CurrentDecode = null;
+        old.Dispose();
       }
 
-      var old = Decoder;
-      Decoder = null;
-      old?.Dispose();
-
-      // create new decoder
+      // create the new decoder, binding the current selection to its handlers so every frame it emits is
+      // attributed to this transmitter even if the selection changes while the frame is in flight
       if (needPipeline)
       {
+        var snapshot = new DecodeSnapshot(Satellite, Transmitter, SignalParams!);
+        CurrentDecode = snapshot;
         Decoder = new(SignalParams!);
-        Decoder.Pipeline.FrameDecoded += FrameDecodedHandler;
-        Decoder.Pipeline.BurstDecoded += BurstDecodedHandler;
+        Decoder.Pipeline.FrameDecoded += frame => FrameDecodedHandler(frame, snapshot);
+        Decoder.Pipeline.BurstDecoded += report => BurstDecodedHandler(report, snapshot);
       }
     }
 
@@ -195,13 +229,13 @@ namespace SkyRoof
       return SupportedModulations.Contains(SignalParams.Modulation);
     }
 
-    private void BurstDecodedHandler(StreamingBurstReport report)
+    private void BurstDecodedHandler(StreamingBurstReport report, DecodeSnapshot snapshot)
     {
       BeginInvoke(() =>
         {
           StatusLabel.Text = "decoding...";
           // create the pass entry on the first burst (grayed until a valid frame arrives), not on the first frame
-          var txPassInfo = EnsureCurrentPassNode();
+          var txPassInfo = EnsureCurrentPassNode(snapshot);
           txPassInfo.BurstCount++;
           // refresh the right panel if this pass entry is the one currently selected
           if (treeView1.SelectedNode == CurrentPassNode) richTextBox1.Text = txPassInfo.Describe();
@@ -209,11 +243,11 @@ namespace SkyRoof
        );
     }
 
-    private void FrameDecodedHandler(Frame frame)
+    private void FrameDecodedHandler(Frame frame, DecodeSnapshot snapshot)
     {
       ctx.KissServer.SendToAll(frame);
-      if (Satellite?.norad_cat_id is int norad) SatnogsUploader?.Submit(frame, norad);
-      BeginInvoke(() => AddFrame(frame));
+      if (snapshot.Satellite?.norad_cat_id is int norad) SatnogsUploader?.Submit(frame, norad);
+      BeginInvoke(() => AddFrame(frame, snapshot));
     }
 
 
@@ -222,9 +256,9 @@ namespace SkyRoof
     //----------------------------------------------------------------------------------------------
     //                                       treeview
     //----------------------------------------------------------------------------------------------
-    private void AddFrame(Frame frame)
+    private void AddFrame(Frame frame, DecodeSnapshot snapshot)
     {
-      var txPassInfo = EnsureCurrentPassNode();
+      var txPassInfo = EnsureCurrentPassNode(snapshot);
 
       // un-gray the pass entry once the first valid frame of the pass is decoded
       if (!txPassInfo.HasValidFrame)
@@ -235,19 +269,20 @@ namespace SkyRoof
 
       bool mustScroll = LastFrameNode == null || treeView1.SelectedNode == LastFrameNode;
 
-      string addr = (SignalParams.Framing == Framing.AX25G3RUH ? Ax25Address.Describe(frame.Bytes) : "") ?? "";
+      string addr = (snapshot.SignalParams.Framing == Framing.AX25G3RUH ? Ax25Address.Describe(frame.Bytes) : "") ?? "";
       string nodeText = $"{DateTime.Now:HH:mm:ss}  {frame.Length} bytes  {addr}";
       LastFrameNode = new TreeNode(nodeText);
-      string frameText = BuildFrameText(frame);
+      string frameText = BuildFrameText(frame, snapshot);
       LastFrameNode.Tag = frameText;
       CurrentPassNode.Nodes.Add(LastFrameNode);
       txPassInfo.FrameCount++;
 
-      SaveFrameToFile(frame, addr, frameText);
+      SaveFrameToFile(frame, addr, frameText, snapshot);
 
       // the pipeline may have locked a blind FSK burst's actual deviation while decoding this frame — refresh the
-      // tooltip so it shows the deviation actually used instead of the initial (unknown) one.
-      UpdateParamsTooltip();
+      // tooltip so it shows the deviation actually used instead of the initial (unknown) one. only do this for the
+      // currently selected transmitter's decoder, so a late frame from a previous transmitter can't overwrite it.
+      if (ReferenceEquals(snapshot, CurrentDecode)) UpdateParamsTooltip();
 
       CurrentPassNode.Expand();
 
@@ -257,17 +292,17 @@ namespace SkyRoof
 
     /// <summary>Returns the current pass node's info, creating the pass node (grayed until the first valid
     /// frame) when this is the first burst or frame of a new transmitter+orbit pass.</summary>
-    private TxPassInfo EnsureCurrentPassNode()
+    private TxPassInfo EnsureCurrentPassNode(DecodeSnapshot snapshot)
     {
-      int orbit = ctx.SdrPasses.GetNextPass(Satellite)?.OrbitNumber ?? -1;
+      int orbit = ctx.SdrPasses.GetNextPass(snapshot.Satellite)?.OrbitNumber ?? -1;
       var txPassInfo = (TxPassInfo?)CurrentPassNode?.Tag;
 
-      if (CurrentPassNode == null || !(txPassInfo!.IsSame(Transmitter, orbit)))
+      if (CurrentPassNode == null || !(txPassInfo!.IsSame(snapshot.Transmitter, orbit)))
       {
-        CurrentPassNode = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {Transmitter.Satellite.name}  {Transmitter.description}");
+        CurrentPassNode = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {snapshot.Transmitter.Satellite.name}  {snapshot.Transmitter.description}");
         CurrentPassNode.ForeColor = Color.Gray;
-        txPassInfo = new TxPassInfo(Transmitter, orbit);
-        txPassInfo.SignalParams = SignalParams;
+        txPassInfo = new TxPassInfo(snapshot.Transmitter, orbit);
+        txPassInfo.SignalParams = snapshot.SignalParams;
         CurrentPassNode.Tag = txPassInfo;
         treeView1.Nodes.Add(CurrentPassNode);
       }
@@ -275,10 +310,10 @@ namespace SkyRoof
       return txPassInfo!;
     }
 
-    private string BuildFrameText(Frame frame)
+    private string BuildFrameText(Frame frame, DecodeSnapshot snapshot)
     {
       string tlm = "";
-      var def = TelemetryRegistry?.ForNorad(Satellite?.norad_cat_id);
+      var def = TelemetryRegistry?.ForNorad(snapshot.Satellite?.norad_cat_id);
       if (def != null)
       {
         var record = TelemetryParser.Parse(def, frame.Bytes);
@@ -319,13 +354,13 @@ namespace SkyRoof
     // mirror everything shown in the tree to the file: the date and time, satellite, transmitter
     // and frame length in the header, the frame address (if any), then the frame detail shown in the
     // right pane
-    private void SaveFrameToFile(Frame frame, string addr, string frameText)
+    private void SaveFrameToFile(Frame frame, string addr, string frameText, DecodeSnapshot snapshot)
     {
       if (!ctx.Settings.Telemetry.ArchiveToFile) return;
 
       FrameLogger ??= CreateFrameLogger();
 
-      string header = $"Sat: {Transmitter.Satellite.name}  Tx: \"{Transmitter.description}\"  Uuid: {Transmitter.uuid}  Frame: {frame.Length} bytes" +
+      string header = $"Sat: {snapshot.Transmitter.Satellite.name}  Tx: \"{snapshot.Transmitter.description}\"  Uuid: {snapshot.Transmitter.uuid}  Frame: {frame.Length} bytes" +
         (addr.Length > 0 ? $"  Addr: {addr}" : "");
       FrameLogger.Information("{Header}\n{Body}", header, frameText);
     }
