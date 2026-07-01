@@ -134,18 +134,26 @@ namespace SkyRoof
       }
 
       SignalParams = SignalParamsResolver.Resolve(Transmitter);
+      UpdateParamsTooltip();
+    }
 
+    /// <summary>Refresh the params tooltip on both status labels: the resolved <see cref="SignalParams"/> (which
+    /// picks up the actual deviation the pipeline resolves for a blind FSK burst) plus the name of the telemetry
+    /// field-decoder definition its frames will be parsed with. Re-called when a frame arrives so the actual
+    /// deviation replaces the initial one once the pipeline locks it.</summary>
+    private void UpdateParamsTooltip()
+    {
+      string tooltip;
       if (SignalParams == null)
-      {
-        toolTip1.SetToolTip(SatNameLabel, "Parameters unknown");
-        toolTip1.SetToolTip(StatusLabel, "Parameters unknown");
-      }
+        tooltip = "Parameters unknown";
       else
       {
-        var tooltip = JsonConvert.SerializeObject(SignalParams, Formatting.Indented, SerializerParams);
-        toolTip1.SetToolTip(SatNameLabel, tooltip);
-        toolTip1.SetToolTip(StatusLabel, tooltip);
+        string paramsStr = JsonConvert.SerializeObject(SignalParams, Formatting.Indented, SerializerParams);
+        string telemetry = TelemetryRegistry?.ForNorad(Satellite?.norad_cat_id)?.Id ?? "none";
+        tooltip = $"{paramsStr}\nTelemetry: {telemetry}";
       }
+      toolTip1.SetToolTip(SatNameLabel, tooltip);
+      toolTip1.SetToolTip(StatusLabel, tooltip);
     }
 
     private void CreatDestroyPipeline()
@@ -236,6 +244,10 @@ namespace SkyRoof
       txPassInfo.FrameCount++;
 
       SaveFrameToFile(frame, addr, frameText);
+
+      // the pipeline may have locked a blind FSK burst's actual deviation while decoding this frame — refresh the
+      // tooltip so it shows the deviation actually used instead of the initial (unknown) one.
+      UpdateParamsTooltip();
 
       CurrentPassNode.Expand();
 

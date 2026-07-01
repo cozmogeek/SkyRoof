@@ -46,5 +46,17 @@
     "modulation": "FSK",
     "deviation": 4800,
     "note": "unfiltered FSK, 4800 Hz deviation (SatNOGS 'GFSK9k6' is wrong)"
+  },
+  "86Q32FyhEEeBzDYBbipKG4": {
+    "satellite": "AISTECHSAT-2",
+    "norad": 43768,
+    "framing": "AX100 ASM+Golay",
+    "note": "GomSpace AX.100 Mode 5 (ASM+Golay)"
+  },
+  "fDywUVLPJc2FMkFoYv7EeV": {
+    "satellite": "SNIPE B",
+    "norad": 56745,
+    "deviation": 2400,
+    "note": "deviation 2400 Hz (not in SatNOGS DB)"
   }
 }
