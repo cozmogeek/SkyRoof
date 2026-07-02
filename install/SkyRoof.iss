@@ -89,7 +89,7 @@ Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\ft4_coder.pdb; DestDir: {a
 Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\libquadmath-0.dll; DestDir: {app}; Flags: overwritereadonly ignoreversion
 Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\WsjtxUtils.WsjtxMessages.dll; DestDir: {app}; Flags: overwritereadonly ignoreversion
 Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\VE3NEA.Dsp.dll; DestDir: {app}; Flags: overwritereadonly ignoreversion
-Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\VE3NEA.Dsp.pdb; DestDir: {app}; Flags: overwritereadonly ignoreversion
+Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\VE3NEA.SkyTlm.dll; DestDir: {app}; Flags: overwritereadonly ignoreversion
 
 
 [Icons]
