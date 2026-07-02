@@ -17,6 +17,6 @@ please ask it to review your changes before you open the PR.
 ## Code style
 
 Please follow the formatting and style rules in
-[SkyRoof/COPILOT_GUIDELINES.md](SkyRoof/COPILOT_GUIDELINES.md). If you are
+[.github/copilot-instructions.md](.github/copilot-instructions.md). If you are
 using an AI coding agent, instruct it to follow those rules — do not rely on
 its defaults.
