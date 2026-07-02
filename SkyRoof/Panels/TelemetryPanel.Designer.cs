@@ -33,15 +33,15 @@ namespace SkyRoof
       toolTip1 = new ToolTip(components);
       StatusLabel = new Label();
       treeView1 = new TreeView();
-      richTextBox1 = new RichTextBox();
-      splitContainer1 = new SplitContainer();
       MenuStrip = new ContextMenuStrip(components);
       ClearAllMNU = new ToolStripMenuItem();
+      richTextBox1 = new RichTextBox();
+      splitContainer1 = new SplitContainer();
+      MenuStrip.SuspendLayout();
       ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
       splitContainer1.Panel1.SuspendLayout();
       splitContainer1.Panel2.SuspendLayout();
       splitContainer1.SuspendLayout();
-      MenuStrip.SuspendLayout();
       SuspendLayout();
       // 
       // SatNameLabel
@@ -79,10 +79,23 @@ namespace SkyRoof
       treeView1.TabIndex = 3;
       treeView1.AfterSelect += treeView1_AfterSelect;
       // 
+      // MenuStrip
+      // 
+      MenuStrip.Items.AddRange(new ToolStripItem[] { ClearAllMNU });
+      MenuStrip.Name = "ClearAllMNU";
+      MenuStrip.Size = new Size(119, 26);
+      // 
+      // ClearAllMNU
+      // 
+      ClearAllMNU.Name = "ClearAllMNU";
+      ClearAllMNU.Size = new Size(118, 22);
+      ClearAllMNU.Text = "Clear All";
+      ClearAllMNU.Click += ClearAllMNU_Click;
+      // 
       // richTextBox1
       // 
       richTextBox1.Dock = DockStyle.Fill;
-      richTextBox1.Font = new Font("Courier New", 12F, FontStyle.Regular, GraphicsUnit.Point, 0);
+      richTextBox1.Font = new Font("Courier New", 11.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
       richTextBox1.Location = new Point(0, 0);
       richTextBox1.Name = "richTextBox1";
       richTextBox1.ReadOnly = true;
@@ -107,19 +120,6 @@ namespace SkyRoof
       splitContainer1.SplitterDistance = 247;
       splitContainer1.TabIndex = 5;
       // 
-      // MenuStrip
-      // 
-      MenuStrip.Items.AddRange(new ToolStripItem[] { ClearAllMNU });
-      MenuStrip.Name = "ClearAllMNU";
-      MenuStrip.Size = new Size(181, 48);
-      // 
-      // ClearAllMNU
-      // 
-      ClearAllMNU.Name = "ClearAllMNU";
-      ClearAllMNU.Size = new Size(180, 22);
-      ClearAllMNU.Text = "Clear All";
-      ClearAllMNU.Click += ClearAllMNU_Click;
-      // 
       // TelemetryPanel
       // 
       AutoScaleDimensions = new SizeF(7F, 15F);
@@ -132,11 +132,11 @@ namespace SkyRoof
       StartPosition = FormStartPosition.CenterParent;
       Text = "Telemetry";
       FormClosing += TelemetryPanel_FormClosing;
+      MenuStrip.ResumeLayout(false);
       splitContainer1.Panel1.ResumeLayout(false);
       splitContainer1.Panel2.ResumeLayout(false);
       ((System.ComponentModel.ISupportInitialize)splitContainer1).EndInit();
       splitContainer1.ResumeLayout(false);
-      MenuStrip.ResumeLayout(false);
       ResumeLayout(false);
     }
 
