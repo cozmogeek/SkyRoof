@@ -1,6 +1,6 @@
 <center>
 
-<h1>SkyRoof v.1.35</h1>
+<h1>SkyRoof v.1.36</h1>
 
 <h4>software for Hams and satellite enthusiasts</h4>
 

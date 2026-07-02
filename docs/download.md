@@ -4,7 +4,7 @@
 
 ### Current Version
 
-[SkyRoof v.1.35](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.35/SkyRoofSetup-v.1.35.zip)
+[SkyRoof v.1.36](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.36/SkyRoofSetup-v.1.36.zip)
 
 <br>
 
@@ -15,6 +15,11 @@ See [All Releases](https://github.com/VE3NEA/SkyRoof/releases)
 <br>
 
 ### Release Notes
+
+#### v.1.36
+
+- Telemetry decoding added
+- fixed right-click error in Group Panel
 
 #### v.1.35
 
