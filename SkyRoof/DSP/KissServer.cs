@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using Serilog;
-using VE3NEA.Tlm.Core;
+using VE3NEA.SkyTlm.Core;
 
 namespace SkyRoof
 {

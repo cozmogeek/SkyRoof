@@ -1,6 +1,6 @@
-﻿using MathNet.Numerics;
+using MathNet.Numerics;
 using VE3NEA;
-using VE3NEA.Tlm.Core;
+using VE3NEA.SkyTlm.Core;
 
 namespace SkyRoof
 {

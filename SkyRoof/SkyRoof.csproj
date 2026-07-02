@@ -58,8 +58,25 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- libfftw3f-3.dll, libliquid.dll, libgcc_s_sjlj-1.dll, libquadmath-0.dll are now
-         provided by the VE3NEA.Dsp project reference and copied to output automatically. -->
+    <!-- VE3NEA.Dsp's native P/Invoke DLLs. VE3NEA.Dsp now lives in the VE3NEA.SkySignals sibling repo and is
+         consumed here as a vendored assembly (see RefreshVendoredDsp below), so a plain <Reference> no longer
+         flows these native libraries automatically; they are committed under Vendor\VE3NEA.Dsp and copied to
+         output here. -->
+    <None Include="..\Vendor\VE3NEA.Dsp\libfftw3f-3.dll" Link="libfftw3f-3.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="..\Vendor\VE3NEA.Dsp\libliquid.dll" Link="libliquid.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="..\Vendor\VE3NEA.Dsp\libgcc_s_sjlj-1.dll" Link="libgcc_s_sjlj-1.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="..\Vendor\VE3NEA.Dsp\libquadmath-0.dll" Link="libquadmath-0.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="..\Vendor\VE3NEA.Dsp\fec.dll" Link="fec.dll">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Include="..\Vendor\ft4_coder\ft4_coder.dll" Link="ft4_coder.dll">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -118,8 +135,25 @@
     <None Include="C:\Proj\DSP\SkyRoof\SkyRoof\.editorconfig" />
   </ItemGroup>
 
+  <!-- VE3NEA.Dsp is built by the VE3NEA.SkySignals sibling solution, not by SkyRoof. Its vendored copy under
+       Vendor\VE3NEA.Dsp is refreshed from that solution's latest build when present (date-gated); forks/CI
+       with no sibling build use the committed copy as-is. -->
+  <PropertyGroup>
+    <DspRepoDll>$(MSBuildThisFileDirectory)..\..\VE3NEA.SkySignals\VE3NEA.Dsp\bin\x64\$(Configuration)\net10.0\VE3NEA.Dsp.dll</DspRepoDll>
+    <DspVendorDir>$(MSBuildThisFileDirectory)..\Vendor\VE3NEA.Dsp\</DspVendorDir>
+  </PropertyGroup>
+
+  <Target Name="RefreshVendoredDsp" BeforeTargets="ResolveAssemblyReferences"
+          Condition="Exists('$(DspRepoDll)')"
+          Inputs="$(DspRepoDll)" Outputs="$(DspVendorDir)VE3NEA.Dsp.dll">
+    <Copy SourceFiles="$(DspRepoDll)" DestinationFolder="$(DspVendorDir)" SkipUnchangedFiles="true" />
+  </Target>
+
   <ItemGroup>
-    <ProjectReference Include="..\VE3NEA.Dsp\VE3NEA.Dsp.csproj" />
+    <Reference Include="VE3NEA.Dsp">
+      <HintPath>$(DspVendorDir)VE3NEA.Dsp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
@@ -179,24 +213,24 @@
     <Folder Include="ControlsEx\ColorSpace\" />
   </ItemGroup>
 
-  <!-- The VE3NEA.Tlm solution owns/builds VE3NEA.Tlm.dll; SkyRoof never builds it, it only references the
-       vendored copy under Vendor\VE3NEA.Tlm. On the maintainer's machine (where the sibling repo is present)
-       the copy is refreshed from that solution's latest build; Inputs/Outputs make it run only when the built
-       dll is newer (date-gated). Forks/CI have no sibling build → the committed Vendor copy is used as-is. -->
+  <!-- The VE3NEA.SkySignals solution owns/builds VE3NEA.SkyTlm.dll; SkyRoof never builds it, it only references
+       the vendored copy under Vendor\VE3NEA.SkyTlm. On the maintainer's machine (where the sibling repo is
+       present) the copy is refreshed from that solution's latest build; Inputs/Outputs make it run only when the
+       built dll is newer (date-gated). Forks/CI have no sibling build → the committed Vendor copy is used as-is. -->
   <PropertyGroup>
-    <TlmRepoDll>$(MSBuildThisFileDirectory)..\..\VE3NEA.Tlm\VE3NEA.Tlm\bin\x64\$(Configuration)\net10.0-windows\VE3NEA.Tlm.dll</TlmRepoDll>
-    <TlmVendorDir>$(MSBuildThisFileDirectory)..\Vendor\VE3NEA.Tlm\</TlmVendorDir>
+    <TlmRepoDll>$(MSBuildThisFileDirectory)..\..\VE3NEA.SkySignals\VE3NEA.SkyTlm\bin\x64\$(Configuration)\net10.0-windows\VE3NEA.SkyTlm.dll</TlmRepoDll>
+    <TlmVendorDir>$(MSBuildThisFileDirectory)..\Vendor\VE3NEA.SkyTlm\</TlmVendorDir>
   </PropertyGroup>
 
   <Target Name="RefreshVendoredTlm" BeforeTargets="ResolveAssemblyReferences"
           Condition="Exists('$(TlmRepoDll)')"
-          Inputs="$(TlmRepoDll)" Outputs="$(TlmVendorDir)VE3NEA.Tlm.dll">
+          Inputs="$(TlmRepoDll)" Outputs="$(TlmVendorDir)VE3NEA.SkyTlm.dll">
     <Copy SourceFiles="$(TlmRepoDll)" DestinationFolder="$(TlmVendorDir)" SkipUnchangedFiles="true" />
   </Target>
 
   <ItemGroup>
-    <Reference Include="VE3NEA.Tlm">
-      <HintPath>$(TlmVendorDir)VE3NEA.Tlm.dll</HintPath>
+    <Reference Include="VE3NEA.SkyTlm">
+      <HintPath>$(TlmVendorDir)VE3NEA.SkyTlm.dll</HintPath>
       <Private>true</Private>
     </Reference>
   </ItemGroup>

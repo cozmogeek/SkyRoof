@@ -1,5 +1,5 @@
-﻿using System.Text.RegularExpressions;
-using VE3NEA.Tlm.Core;
+using System.Text.RegularExpressions;
+using VE3NEA.SkyTlm.Core;
 
 namespace SkyRoof.Satellites
 {

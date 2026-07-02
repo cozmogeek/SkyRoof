@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using Serilog;
 using VE3NEA;
-using VE3NEA.Tlm.Core;
+using VE3NEA.SkyTlm.Core;
 
 namespace SkyRoof
 {

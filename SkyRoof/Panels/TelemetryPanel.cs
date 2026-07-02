@@ -3,9 +3,9 @@ using Newtonsoft.Json;
 using Serilog;
 using SkyRoof.Satellites;
 using VE3NEA;
-using VE3NEA.Tlm.Core;
-using VE3NEA.Tlm.Deframing;
-using VE3NEA.Tlm.Telemetry;
+using VE3NEA.SkyTlm.Core;
+using VE3NEA.SkyTlm.Deframing;
+using VE3NEA.SkyTlm.Telemetry;
 using WeifenLuo.WinFormsUI.Docking;
 
 namespace SkyRoof
