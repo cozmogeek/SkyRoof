@@ -36,9 +36,11 @@ reports `format not supported`, and no decoding takes place.
    transmitter; hover over it to see the resolved signal parameters.
 
    Many satellites have several transmitters on the same frequency, and only some of them may be
-   supported by the decoder. The label you click on the frequency scale is not necessarily the one
+   supported by the decoder - for exmple, a CW beacon and a GMSK telemetry. The label you click on the frequency scale is not necessarily the one
    that gets selected, so after clicking check that the right transmitter is highlighted in the
    [Satellite Transmitters](satellite_transmitters_panel.md) panel.
+
+   Some satellites can transmit their telemetry at different Baud rates, selected by the ground station. Such satellites have multiple transmitters in the database, one per Baud rate. To switch to a different rate, just select the right transmitter.
 
 4. Make sure the SDR is running and tuned to the satellite. The decoder uses the same
    Doppler-corrected passband as the receiver, so the satellite's signal must be visible on the
