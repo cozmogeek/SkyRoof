@@ -94,6 +94,7 @@ namespace SkyRoof
       // 
       // richTextBox1
       // 
+      richTextBox1.BackColor = SystemColors.Window;
       richTextBox1.Dock = DockStyle.Fill;
       richTextBox1.Font = new Font("Courier New", 11.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
       richTextBox1.Location = new Point(0, 0);
