@@ -22,7 +22,7 @@ namespace SkyRoof
       grid.SelectedObject = Utils.DeepClone(ctx.Settings);
 
       if (section == null)
-        grid.ExpandTopLevelProperties(null, true);
+        grid.CollapseAllGridItems();
       else
         grid.ExpandTopLevelProperties(grid.GetItemByFullName(section));
     }
