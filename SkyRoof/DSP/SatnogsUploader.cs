@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using Newtonsoft.Json;
 using Serilog;
 using VE3NEA;
 using VE3NEA.SkyTlm.Core;
@@ -74,7 +75,9 @@ namespace SkyRoof
         ["version"] = Version
       };
 
-      byte[] body = new FormUrlEncodedContent(fields).ReadAsByteArrayAsync().Result;
+      var content = new FormUrlEncodedContent(fields);
+      byte[] body = content.ReadAsByteArrayAsync().Result;
+      Log.Information($"Uploading SatNOGS frame: {JsonConvert.SerializeObject(fields)}");
 
       if (!Queue.IsAddingCompleted)
         try { Queue.Add(new Submission(sett.ApiToken.Trim(), body, timestamp)); }
@@ -107,7 +110,7 @@ namespace SkyRoof
       if (response.IsSuccessStatusCode)
         Log.Information($"SatNOGS frame uploaded ({(int)response.StatusCode}) at {item.Timestamp:HH:mm:ss}");
       else
-        Log.Warning($"SatNOGS upload rejected: HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
+        Log.Warning($"SatNOGS upload rejected: HTTP {(int)response.StatusCode} {response.ReasonPhrase} {response.Content}");
     }
   }
 }
