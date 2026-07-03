@@ -38,6 +38,7 @@ namespace SkyRoof
 
       this.ctx.GroupViewPanel = this;
       this.ctx.MainForm.GroupViewMNU.Checked = true;
+      ctx.Settings.Ui.RestoreColumnWidths("GroupViewPanel", listView1);
       LoadGroup();
     }
 
@@ -46,6 +47,7 @@ namespace SkyRoof
       Log.Information("Closing GroupViewPanel");
       ctx.GroupViewPanel = null;
       ctx.MainForm.GroupViewMNU.Checked = false;
+      ctx.Settings.Ui.SaveColumnWidths("GroupViewPanel", listView1);
     }
 
     public void LoadGroup()
@@ -209,7 +211,7 @@ namespace SkyRoof
       // use the sat captured when the menu opened: a timer-driven list rebuild
       // (UpdatePassTimes -> SortItems) can clear SelectedIndices while the menu is open
       if (ContextMenuSat == null) return;
-      SatelliteDetailsForm.ShowSatellite(ContextMenuSat, ctx.MainForm);
+      SatelliteDetailsForm.ShowSatellite(ContextMenuSat, ctx.MainForm, ctx);
     }
 
     private void contextMenuStrip1_Opening(object sender, System.ComponentModel.CancelEventArgs e)

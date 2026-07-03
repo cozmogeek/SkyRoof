@@ -17,6 +17,10 @@ namespace SkyRoof
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public SatnogsUploaderSettings SatnogsUploader { get; set; } = new();
 
+    [Browsable(false)]
+    [DefaultValue(247)]
+    public int SplitterDistance { get; set; } = 247;
+
 
     public override string ToString() { return string.Empty; }
   }

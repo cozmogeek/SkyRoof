@@ -734,6 +734,7 @@
       ShowInTaskbar = false;
       StartPosition = FormStartPosition.CenterParent;
       Text = "Satellites and Groups";
+      ActiveControl = FilterTextbox;
       FormClosing += SatelliteGroupsForm_FormClosing;
       panel1.ResumeLayout(false);
       panel8.ResumeLayout(false);

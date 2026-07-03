@@ -47,11 +47,17 @@ namespace SkyRoof
       SatellitePropertyGrid.SelectedObject = sat;
     }
 
+    private void SatelliteDetailsPanel_Shown(object? sender, EventArgs e)
+    {
+      ctx.Settings.Ui.RestorePropertyGridLabelWidth("SatelliteDetailsPanel", SatellitePropertyGrid);
+    }
+
     private void SatelliteDetailsPanel_FormClosing(object sender, FormClosingEventArgs e)
     {
       Log.Information("Closing SatelliteDetailsPanel");
       ctx.SatelliteDetailsPanel = null;
       ctx.MainForm.SatelliteDetailsMNU.Checked = false;
+      ctx.Settings.Ui.SavePropertyGridLabelWidth("SatelliteDetailsPanel", SatellitePropertyGrid);
     }
 
     private void ImageLabel_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)

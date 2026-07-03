@@ -467,7 +467,7 @@ namespace SkyRoof
     {
       var label = ScaleControl.GetLabelUnderCursor(MouseMovePos);
       var sat = label.Pass.Satellite;
-      SatelliteDetailsForm.ShowSatellite(sat, ctx.MainForm);
+      SatelliteDetailsForm.ShowSatellite(sat, ctx.MainForm, ctx);
     }
   }
 }

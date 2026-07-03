@@ -24,6 +24,21 @@ namespace SkyRoof
       InitializeComponent();
     }
 
+    internal void RestoreLayout(UiSettings ui)
+    {
+      ui.RestoreColumnWidths("SatelliteDetailsForm", listView1);
+      ui.RestorePropertyGridLabelWidth("SatelliteDetailsForm", SatellitePropertyGrid);
+      if (ui.SatelliteDetailsForm.SplitterDistance > 0)
+        splitContainer1.SplitterDistance = ui.SatelliteDetailsForm.SplitterDistance;
+    }
+
+    internal void SaveLayout(UiSettings ui)
+    {
+      ui.SaveColumnWidths("SatelliteDetailsForm", listView1);
+      ui.SavePropertyGridLabelWidth("SatelliteDetailsForm", SatellitePropertyGrid);
+      ui.SatelliteDetailsForm.SplitterDistance = splitContainer1.SplitterDistance;
+    }
+
     internal void ShowSatellite(SatnogsDbSatellite? satellite)
     {
       if (satellite == null) return;

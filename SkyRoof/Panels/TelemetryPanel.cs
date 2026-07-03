@@ -111,11 +111,17 @@ namespace SkyRoof
       SetTransmitter();
     }
 
+    private void TelemetryPanel_Shown(object? sender, EventArgs e)
+    {
+      splitContainer1.SplitterDistance = ctx.Settings.Telemetry.SplitterDistance;
+    }
+
     private void TelemetryPanel_FormClosing(object sender, FormClosingEventArgs e)
     {
       Log.Information("Closing TelemetryPanel");
       ctx.TelemetryPanel = null;
       ctx.MainForm.TelemetryMNU.Checked = false;
+      ctx.Settings.Telemetry.SplitterDistance = splitContainer1.SplitterDistance;
 
       // stop and free the decode pipeline (joins its worker thread and releases native FFTW memory)
       Decoder?.Dispose();

@@ -1,11 +1,7 @@
-﻿using System.Collections.Generic;
-using System.Drawing;
-using System.Globalization;
+﻿using System.Globalization;
 using Devcorp.Controls.Design;
 using WsjtxUtils.WsjtxMessages.Messages;
 using WsjtxUtils.WsjtxMessages.QsoParsing;
-using static SkyRoof.Ft4MessageListWidget;
-using static SkyRoof.Slicer;
 
 namespace SkyRoof
 {

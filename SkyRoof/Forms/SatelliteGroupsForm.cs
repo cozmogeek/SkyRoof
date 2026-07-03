@@ -39,6 +39,7 @@ namespace SkyRoof
     public void SetList(Context context)
     {
       ctx = context;
+      ctx.Settings.Ui.RestoreColumnWidths("SatelliteGroupsForm", listView1);
       var updateTime = ctx.Settings.Satellites.LastDownloadTime;
 
       // shared fonts, created once instead of per item/node
@@ -443,7 +444,7 @@ namespace SkyRoof
     //----------------------------------------------------------------------------------------------
     private void ShowSatelliteDetails(SatnogsDbSatellite sat)
     {
-      SatelliteDetailsForm.ShowSatellite(sat, ParentForm);
+      SatelliteDetailsForm.ShowSatellite(sat, ParentForm, ctx);
     }
 
     private void RenameSat(SatnogsDbSatellite sat, string name)
@@ -460,6 +461,8 @@ namespace SkyRoof
 
     private void SatelliteGroupsForm_FormClosing(object sender, FormClosingEventArgs e)
     {
+      ctx.Settings.Ui.SaveColumnWidths("SatelliteGroupsForm", listView1);
+
       if (Changed && MessageBox.Show("Save changes?", "SkyRoof", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
         SaveGroups();
     }

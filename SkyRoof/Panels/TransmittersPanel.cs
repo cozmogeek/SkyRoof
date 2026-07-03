@@ -27,6 +27,7 @@ namespace SkyRoof
 
       ctx.TransmittersPanel = this;
       ctx.MainForm.TransmittersMNU.Checked = true;
+      ctx.Settings.Ui.RestoreColumnWidths("TransmittersPanel", listView1);
       SetSatellite();
     }
 
@@ -51,6 +52,7 @@ namespace SkyRoof
       Log.Information("Closing TransmittersPanel");
       ctx.TransmittersPanel = null;
       ctx.MainForm.TransmittersMNU.Checked = false;
+      ctx.Settings.Ui.SaveColumnWidths("TransmittersPanel", listView1);
     }
 
     private void CreateTransmitterItems()

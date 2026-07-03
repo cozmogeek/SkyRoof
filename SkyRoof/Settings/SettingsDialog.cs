@@ -27,6 +27,16 @@ namespace SkyRoof
         grid.ExpandTopLevelProperties(grid.GetItemByFullName(section));
     }
 
+    private void SettingsDialog_Shown(object? sender, EventArgs e)
+    {
+      ctx.Settings.Ui.RestorePropertyGridLabelWidth("SettingsDialog", grid);
+    }
+
+    private void SettingsDialog_FormClosing(object? sender, FormClosingEventArgs e)
+    {
+      ctx.Settings.Ui.SavePropertyGridLabelWidth("SettingsDialog", grid);
+    }
+
     private void SelectSection(string section)
     {
       if (section == null) return;
