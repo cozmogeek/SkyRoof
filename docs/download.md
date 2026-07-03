@@ -4,7 +4,7 @@
 
 ### Current Version
 
-[SkyRoof v.1.36](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.36/SkyRoofSetup-v.1.36.zip)
+[SkyRoof v.1.37](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.37/SkyRoofSetup-v.1.37.zip)
 
 <br>
 
@@ -15,6 +15,13 @@ See [All Releases](https://github.com/VE3NEA/SkyRoof/releases)
 <br>
 
 ### Release Notes
+
+#### v.1.37
+
+- add diagnostics logging for SatNOGS submission
+- reduce font size in the Telemetry panel
+- save and restore column widths and splitter positions in all panels
+- open the Settings window with sections collapsed
 
 #### v.1.36
 
