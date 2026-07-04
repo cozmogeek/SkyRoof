@@ -71,7 +71,7 @@ namespace SkyRoof
         ["locator"] = "longLat",
         ["longitude"] = $"{Math.Abs(location.Longitude).ToString("F4", CultureInfo.InvariantCulture)}{(location.Longitude >= 0 ? "E" : "W")}",
         ["latitude"] = $"{Math.Abs(location.Latitude).ToString("F4", CultureInfo.InvariantCulture)}{(location.Latitude >= 0 ? "N" : "S")}",
-        ["timestamp"] = timestamp.ToString("yyyy-MM-ddTHH:mm:ss.fff") + "Z",
+        ["timestamp"] = timestamp.ToString("yyyy-MM-ddTHH:mm:ss.fff", CultureInfo.InvariantCulture) + "Z",
         ["frame"] = frame.Hex,
         ["version"] = Version
       };
@@ -111,7 +111,14 @@ namespace SkyRoof
       if (response.IsSuccessStatusCode)
         Log.Information($"SatNOGS frame uploaded ({(int)response.StatusCode}) at {item.Timestamp:HH:mm:ss}");
       else
-        Log.Warning($"SatNOGS upload rejected: HTTP {(int)response.StatusCode} {response.ReasonPhrase} {response.Content}");
+      {
+        // read the response body so the log shows the server's actual error (e.g. bad timestamp, bad
+        // token); ReadAsStringAsync is needed because HttpContent.ToString() only yields the type name
+        string reason;
+        try { reason = response.Content.ReadAsStringAsync().Result.Trim(); }
+        catch (Exception e) { reason = $"<body unreadable: {e.Message}>"; }
+        Log.Warning($"SatNOGS upload rejected: HTTP {(int)response.StatusCode} {response.ReasonPhrase} {reason}");
+      }
     }
   }
 }
