@@ -173,6 +173,7 @@ namespace SkyRoof
 
       t = 0;
       int majorLen = 8;
+      using var labelBrush = new SolidBrush(waveformAxisColor);
       while (t <= totalSeconds)
       {
         int x = waveformRect.Left + (int)Math.Round(t * pixelsPerSecond);
@@ -181,7 +182,7 @@ namespace SkyRoof
         TimeSpan ts = TimeSpan.FromSeconds(t);
         string label = ts.TotalHours >= 1 ? $"{(int)ts.TotalHours:D2}:{ts:mm\\:ss}" : $"{ts:mm\\:ss}";
         var size = TextRenderer.MeasureText(label, Font, Size, TextFormatFlags.NoPadding);
-        g.DrawString(label, Font, new SolidBrush(waveformAxisColor), x - size.Width / 2, scaleTopY + majorLen + 2);
+        g.DrawString(label, Font, labelBrush, x - size.Width / 2, scaleTopY + majorLen + 2);
 
         t += step;
       }

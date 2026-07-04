@@ -8,6 +8,7 @@ docs/_site
 *.grf
 release_steps.txt
 install/Output/
+design-docs/
 CLAUDE.md
 .claude/settings.local.json
 

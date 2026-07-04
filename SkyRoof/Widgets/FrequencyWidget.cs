@@ -25,9 +25,14 @@ namespace SkyRoof
     // or no SDR band matches the active RF). Updated by SetSlicerFrequency on band changes.
     private TransverterBand? ActiveSdrBand;
 
+    // cached so the Terrestrial/normal toggle does not allocate (and leak) a new font each update
+    private readonly Font DownlinkRegularFont, DownlinkBoldFont;
+
     public FrequencyWidget()
     {
       InitializeComponent();
+      DownlinkRegularFont = DownlinkLabel.Font;
+      DownlinkBoldFont = new Font(DownlinkLabel.Font, FontStyle.Bold);
       Changing = true;
       DownlinkModeCombobox.DataSource = Enum.GetValues(typeof(Slicer.Mode));
       UplinkModeCombobox.DataSource = Enum.GetValues(typeof(Slicer.Mode));
@@ -76,7 +81,7 @@ namespace SkyRoof
     internal void SetTransponderOffset(SatnogsDbTransmitter transponder, double offset)
     {
       // set the offset first
-      var transponderCust = ctx.Settings.Satellites.TransmitterCustomizations.GetOrCreate(transponder.uuid);
+      var transponderCust = ctx.Settings.Satellites.GetOrCreateTransmitterCustomization(transponder);
       Debug.Assert(offset >= 0 && offset <= transponder.uplink_high - transponder.uplink_low);
       transponderCust.TransponderOffset = offset;
 
@@ -207,7 +212,7 @@ namespace SkyRoof
         RadioLink.Sat = ctx.SatelliteSelector.SelectedSatellite;
         RadioLink.Tx = ctx.SatelliteSelector.SelectedTransmitter;
         RadioLink.SatCust = ctx.Settings.Satellites.SatelliteCustomizations.GetOrCreate(RadioLink.Sat.sat_id);
-        RadioLink.TxCust = ctx.Settings.Satellites.TransmitterCustomizations.GetOrCreate(RadioLink.Tx.uuid);
+        RadioLink.TxCust = ctx.Settings.Satellites.GetOrCreateTransmitterCustomization(RadioLink.Tx);
         RadioLink.ObserveSatellite(ctx.SdrPasses);
         isTerrestrial = RadioLink.IsTerrestrial; 
 
@@ -369,7 +374,11 @@ namespace SkyRoof
 
       if (ifFrequency >= low && ifFrequency <= high)
         if (ctx.Slicer?.Enabled == true)
-          ctx.Slicer.SetOffset(ifFrequency - ctx.Sdr.Frequency);
+        {
+          // terrestrial has no doppler ramp; otherwise extrapolate at the last estimated rate
+          double rate = RadioLink.IsTerrestrial ? 0 : RadioLink.DownlinkDopplerRate;
+          ctx.Slicer.SetOffset(ifFrequency - ctx.Sdr.Frequency, rate);
+        }
     }
 
     private bool BringToPassband(double frequency, double bandLow, double bandHigh)
@@ -425,7 +434,7 @@ namespace SkyRoof
 
         DownlinkLabel.Text = "Terrestrial";
         DownlinkLabel.ForeColor = Color.Red;
-        DownlinkLabel.Font = new(DownlinkLabel.Font, FontStyle.Bold);
+        DownlinkLabel.Font = DownlinkBoldFont;
 
         DownlinkDopplerCheckbox.Visible = false;
         DownlinkDopplerLabel.BackColor = SystemColors.Control;
@@ -444,7 +453,7 @@ namespace SkyRoof
 
         DownlinkLabel.Text = "Downlink";
         DownlinkLabel.ForeColor = SystemColors.ControlText;
-        DownlinkLabel.Font = new(DownlinkLabel.Font, FontStyle.Regular);
+        DownlinkLabel.Font = DownlinkRegularFont;
 
         DownlinkDopplerCheckbox.Visible = true;
         DownlinkDopplerLabel.BackColor = SystemColors.Window;

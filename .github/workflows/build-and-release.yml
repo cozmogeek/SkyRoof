@@ -52,7 +52,7 @@ jobs:
         shell: pwsh
 
       - name: Build WinForms App
-        run: msbuild SkyRoof.sln /p:Configuration=Release
+        run: msbuild SkyRoof.sln /p:Configuration=Release /p:Platform=x64
 
       - name: Install Inno Setup
         run: choco upgrade innosetup --yes --no-progress

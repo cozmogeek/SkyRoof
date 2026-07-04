@@ -21,7 +21,8 @@ namespace SkyRoof
     private const double USEFUL_BANDWIDTH = 0.95 * SdrConst.AUDIO_SAMPLING_RATE / 2; // 22 kHz useful at 48 KHz sampling rate
     
     private int OctaveDecimationFactor, RationalInterpolationFactor, RationalDecimationFactor;
-    private NativeLiquidDsp.nco_crcf* FirstMixer, SecondMixer;
+    private RampedMixer FirstMixer;
+    private NativeLiquidDsp.nco_crcf* SecondMixer;
     private NativeLiquidDsp.msresamp2_crcf* msresamp2;
     private NativeLiquidDsp.rresamp_crcf* rresamp;
     private NativeLiquidDsp.firfilt_crcf* firfilt;
@@ -40,7 +41,12 @@ namespace SkyRoof
    
 
     public double InputRate { get; private set; }
-    public double Bandwidth { get => Bandwidths[(int)CurrentMode]; }
+    public double Bandwidth { get => GetBandwidth(CurrentMode); }
+
+    // mode -> passband geometry, derived from the mode alone so the display can be
+    // computed from RadioLink (the source of truth) without a live Slicer instance
+    public static int GetBandwidth(Mode mode) => Bandwidths[(int)mode];
+    public static int GetModeOffset(Mode mode) => mode == Mode.CW ? 0 : ModeOffsets[(int)mode];
 
     public event EventHandler<DataEventArgs<float>>? AudioDataAvailable;
     public event EventHandler<DataEventArgs<Complex32>>? IqDataAvailable;
@@ -50,7 +56,7 @@ namespace SkyRoof
     {
       InputRate = inputRate;
 
-      FirstMixer = NativeLiquidDsp.nco_crcf_create(NativeLiquidDsp.LiquidNcoType.LIQUID_NCO);
+      FirstMixer = new RampedMixer(InputRate);
       SecondMixer = NativeLiquidDsp.nco_crcf_create(NativeLiquidDsp.LiquidNcoType.LIQUID_NCO);
 
       SetOffset(frequencyOffset);
@@ -63,12 +69,19 @@ namespace SkyRoof
       SetMode(mode);
     }
 
-    public void SetOffset(double offset)
+    /// <summary>
+    /// Set the downlink-correction frequency offset and, optionally, the doppler rate to ramp at
+    /// until the next call. <paramref name="rateHzPerSec"/> = 0 applies a single clean step.
+    /// </summary>
+    public void SetOffset(double offset, double rateHzPerSec = 0)
     {
       if (!Enabled) return;
       this.offset = offset;
-      if (CurrentMode != Mode.CW) offset += ModeOffsets[(int)CurrentMode];
-      NativeLiquidDsp.nco_crcf_set_frequency(FirstMixer, (float)(Geo.TwoPi * offset / InputRate));
+
+      double offsetHz = offset;
+      if (CurrentMode != Mode.CW) offsetHz += ModeOffsets[(int)CurrentMode];
+
+      FirstMixer.SetTarget(offsetHz, rateHzPerSec);
     }
 
     private void SetMode(Mode mode)
@@ -85,8 +98,7 @@ namespace SkyRoof
 
     public double GetModeoffset()
     {
-      if (CurrentMode == Mode.CW) return 0;
-      return ModeOffsets[(int)CurrentMode];
+      return GetModeOffset(CurrentMode);
     }
 
     public TimeSpan GetDelay()
@@ -186,11 +198,9 @@ namespace SkyRoof
       InputBuffer.Data = args.Data;
       InputBuffer.Count = args.Count;
 
-      // mix down to baseband
+      // mix down to baseband, ramping the frequency continuously for smooth doppler correction
       fixed (Complex32* pData = InputBuffer.Data)
-      {
-        NativeLiquidDsp.nco_crcf_mix_block_down(FirstMixer, pData, pData, (uint)InputBuffer.Count);
-      }
+        FirstMixer.MixDown(pData, InputBuffer.Count);
 
       // downsample 
       if (msresamp2 == null)
@@ -329,14 +339,14 @@ namespace SkyRoof
     {
       base.Dispose();
 
-      if (FirstMixer != null) NativeLiquidDsp.nco_crcf_destroy(FirstMixer);
+      FirstMixer?.Dispose();
       if (msresamp2 != null) NativeLiquidDsp.msresamp2_crcf_destroy(msresamp2);
       if (rresamp != null) NativeLiquidDsp.rresamp_crcf_destroy(rresamp);
       if (SecondMixer != null) NativeLiquidDsp.nco_crcf_destroy(SecondMixer);
       if (firfilt != null) NativeLiquidDsp.firfilt_crcf_destroy(firfilt);
       if (freqdem != null) NativeLiquidDsp.freqdem_destroy(freqdem);      
 
-      FirstMixer = null;
+      FirstMixer = null!;
       msresamp2 = null;
       rresamp = null;
       SecondMixer = null;

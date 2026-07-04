@@ -5,6 +5,8 @@ namespace SkyRoof
   public partial class PathOptimizerForm : Form
   {
     private const double ROTATION_SPEED = 6.0; // degrees per second
+    // shared, so CellFormatting (fires per cell per paint) doesn't leak a GDI font handle each time
+    private Font? BoldFont;
 
     public PathOptimizerForm()
     {
@@ -54,9 +56,9 @@ namespace SkyRoof
         double rotationTime = currentDirection != null ? currentDirection.RotationTime(firstPoint) : 0;
         double displayRotationTime = Trig.DinR * rotationTime / ROTATION_SPEED;
 
-        string currentDirStr = currentDirection != null ? $"Az: {currentDirection.AzDeg:F0}°, El: {currentDirection.ElDeg:F0}°" : "";
-        string firstPointStr = $"Az: {firstPoint.AzDeg:F0}°, El: {firstPoint.ElDeg:F0}°";
-        string lastPointStr = $"Az: {lastPoint.AzDeg:F0}°, El: {lastPoint.ElDeg:F0}°";
+        string currentDirStr = currentDirection != null ? $"Az: {currentDirection.AzDeg:F0}ï¿½, El: {currentDirection.ElDeg:F0}ï¿½" : "";
+        string firstPointStr = $"Az: {firstPoint.AzDeg:F0}ï¿½, El: {firstPoint.ElDeg:F0}ï¿½";
+        string lastPointStr = $"Az: {lastPoint.AzDeg:F0}ï¿½, El: {lastPoint.ElDeg:F0}ï¿½";
 
         int rowIdx = dataGridView.Rows.Add(
             currentDirStr,
@@ -79,7 +81,7 @@ namespace SkyRoof
     private void DataGridView_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
       if (e.ColumnIndex == 1 && e.RowIndex == 0)
-        e.CellStyle.Font = new Font(dataGridView.Font, FontStyle.Bold);
+        e.CellStyle.Font = BoldFont ??= new Font(dataGridView.Font, FontStyle.Bold);
       else
         e.CellStyle.Font = dataGridView.Font;
 

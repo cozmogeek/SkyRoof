@@ -4,7 +4,7 @@
 
 ### Current Version
 
-[SkyRoof v.1.32](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.32/SkyRoofSetup-v.1.32.zip)
+[SkyRoof v.1.38](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.38/SkyRoofSetup-v.1.38.zip)
 
 <br>
 
@@ -15,6 +15,40 @@ See [All Releases](https://github.com/VE3NEA/SkyRoof/releases)
 <br>
 
 ### Release Notes
+
+#### v.1.38
+
+- frame submission to SatNOGS no longer depends on Windows culture
+
+#### v.1.37
+
+- added diagnostics logging for SatNOGS submission
+- reduced font size in the Telemetry panel
+- saved and restored column widths and splitter positions in all panels
+- the Settings window now opens with sections collapsed
+
+#### v.1.36
+
+- Telemetry decoding added
+- fixed right-click error in Group Panel
+
+#### v.1.35
+
+- the mode is guessed when a transmitter is selected for the first time
+- Doppler correction of the SDR receiver is interpolated instead of changing in steps
+- incorrect display of SDR gain on non-English windows is fixed
+
+#### v.1.34
+
+- pass coverage area is now plotted in EarthView
+- improved performance of the waterfall - contributed by [cozmogeek](https://github.com/cozmogeek)
+- fixed intermittent crashes on saving updated groups
+
+#### v.1.33
+
+- network resilience improvements - contributed by [Stu](https://github.com/shs101)
+- labels and tuning commands on the frequency scale now work without an SDR
+- fixed mouse clicks on the satellite image
 
 #### v.1.32
 

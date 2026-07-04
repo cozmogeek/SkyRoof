@@ -199,7 +199,7 @@ namespace SkyRoof
         points[i] = TrackPointToXY(pass.Track[i]);
 
       // draw track
-      var pen = new Pen(Color.Green, 2f);
+      using var pen = new Pen(Color.Green, 2f);
       g.DrawLines(pen, points);
       var startPoint = TrackPointToXY(pass.Track.First());
       var endPoint = TrackPointToXY(pass.Track.Last());

@@ -36,4 +36,13 @@ SkyRoof keeps all of its data in the **data folder**.
     palette as a text file with "html" color codes. Pick the color codes at
     [htmlcolorcodes.com](https://htmlcolorcodes.com/);
 - **sat_images** - cached satellite thumbnails shown by the
-    [Satellite Photo](satellite_photo.md) widget. Delete this folder to force re-download.
+    [Satellite Photo](satellite_photo.md) widget. Delete this folder to force re-download;
+- **Recordings** - the default location for the audio and I/Q files saved by the
+    [Recorder](recorder_panel.md) panel;
+- **FT4** - decoded messages saved by the [FT4 Console](ft4_console_panel.md) panel, when the
+    **Save to File** option is enabled in the settings;
+- **TelemetryDecodes** - decoded telemetry frames saved by the [Telemetry](telemetry_panel.md)
+    panel, when the **Save to File** option is enabled in the
+    [telemetry settings](setting_up_telemetry_decoding.md#decoder-settings). One file is created per day;
+- **TelemetryRegistry** - the definitions used to decode raw telemetry frames into named values
+    in the [Telemetry](telemetry_panel.md) panel.

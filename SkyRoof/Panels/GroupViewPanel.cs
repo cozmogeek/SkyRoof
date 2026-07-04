@@ -2,6 +2,7 @@
 using Serilog;
 using VE3NEA;
 using WeifenLuo.WinFormsUI.Docking;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace SkyRoof
 {
@@ -17,6 +18,10 @@ namespace SkyRoof
     protected readonly Context ctx;
     private int SortColumn = 2;
     public ListViewItem[] Items;
+    // shared, so we don't leak a GDI font handle per item on every rebuild
+    private Font BoldFont, StrikeoutFont;
+    // sat the context menu was opened on, captured at Opening time (see SatelliteDetailsMNU_Click)
+    private SatnogsDbSatellite? ContextMenuSat;
 
 
 
@@ -33,6 +38,7 @@ namespace SkyRoof
 
       this.ctx.GroupViewPanel = this;
       this.ctx.MainForm.GroupViewMNU.Checked = true;
+      ctx.Settings.Ui.RestoreColumnWidths("GroupViewPanel", listView1);
       LoadGroup();
     }
 
@@ -41,6 +47,7 @@ namespace SkyRoof
       Log.Information("Closing GroupViewPanel");
       ctx.GroupViewPanel = null;
       ctx.MainForm.GroupViewMNU.Checked = false;
+      ctx.Settings.Ui.SaveColumnWidths("GroupViewPanel", listView1);
     }
 
     public void LoadGroup()
@@ -56,10 +63,20 @@ namespace SkyRoof
         .ToArray();
       ShowAmsatStatuses();
 
+      PopulateListView();
       SyncVirtualListSize();
 
       ShowSelectedSat();
       GroupNameLabel.Text = $"Group:   {group.Name}";
+    }
+
+    // fill the (non-virtual) list from the Items array, preserving its order
+    private void PopulateListView()
+    {
+      listView1.BeginUpdate();
+      listView1.Items.Clear();
+      listView1.Items.AddRange(Items);
+      listView1.EndUpdate();
     }
 
     protected override void OnLoad(EventArgs e)
@@ -105,9 +122,12 @@ namespace SkyRoof
       if (sat.Transmitters.Any(t => t.IsUhf() && t.HasUplink())) item.BackColor = Color.LightCyan;
       else if (sat.Transmitters.Any(t => t.IsVhf() && t.HasUplink())) item.BackColor = Color.LightGoldenrodYellow;
 
-      if (sat.Flags.HasFlag(SatelliteFlags.Ham)) item.Font = new(item.Font, FontStyle.Bold);
+      BoldFont ??= new Font(listView1.Font, FontStyle.Bold);
+      StrikeoutFont ??= new Font(listView1.Font, FontStyle.Strikeout);
+
+      if (sat.Flags.HasFlag(SatelliteFlags.Ham)) item.Font = BoldFont;
       if (!sat.status.StartsWith("alive")) item.ForeColor = Color.Silver;
-      else if (sat.Tle == null) item.Font = new(item.Font, FontStyle.Strikeout);
+      else if (sat.Tle == null) item.Font = StrikeoutFont;
 
       return item;
     }
@@ -198,7 +218,7 @@ namespace SkyRoof
         case 3: Items = Items.OrderBy(item => ((ItemData)item.Tag!).Pass?.MaxElevation).ToArray(); break;
       }
 
-      listView1.Invalidate();
+      PopulateListView();
     }
 
 
@@ -237,8 +257,10 @@ namespace SkyRoof
 
     private void SatelliteDetailsMNU_Click(object sender, EventArgs e)
     {
-      if (!TryGetSelectedItem(out var data)) return;
-      SatelliteDetailsForm.ShowSatellite(data.Sat, ctx.MainForm);
+      // use the sat captured when the menu opened: a timer-driven list rebuild
+      // (UpdatePassTimes -> SortItems) can clear SelectedIndices while the menu is open
+      if (ContextMenuSat == null) return;
+      SatelliteDetailsForm.ShowSatellite(ContextMenuSat, ctx.MainForm, ctx);
     }
 
     private void MonitorSatelliteMNU_Click(object sender, EventArgs e)
@@ -266,25 +288,14 @@ namespace SkyRoof
 
     private void contextMenuStrip1_Opening(object sender, System.ComponentModel.CancelEventArgs e)
     {
-      if (!TryGetSelectedItem(out var data))
-      {
-        e.Cancel = true;
-        return;
-      }
+          
+          if (listView1.SelectedIndices.Count == 0) { e.Cancel = true; ContextMenuSat = null; return; }
 
-      bool monitored = ctx.Settings.Satellites.MonitoredSatelliteIds.Contains(data.Sat.sat_id);
+      ContextMenuSat = ((ItemData)Items[listView1.SelectedIndices[0]].Tag!).Sat;
+        if (listView1.SelectedIndices.Count == 0) e.Cancel = true;
+
+        bool monitored = ctx.Settings.Satellites.MonitoredSatelliteIds.Contains(ContextMenuSat.sat_id);
       MonitorSatelliteMNU.Text = monitored ? "Unmonitor Satellite" : "Monitor Satellite";
-    }
-
-    private void listView1_MouseDown(object sender, MouseEventArgs e)
-    {
-      if (e.Button != MouseButtons.Right) return;
-      var item = listView1.GetItemAt(e.X, e.Y);
-      if (item == null) return;
-
-      // ensure the context menu applies to the row that was right-clicked
-      listView1.SelectedIndices.Clear();
-      item.Selected = true;
     }
   }
 }

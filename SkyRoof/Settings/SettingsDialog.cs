@@ -22,9 +22,19 @@ namespace SkyRoof
       grid.SelectedObject = Utils.DeepClone(ctx.Settings);
 
       if (section == null)
-        grid.ExpandTopLevelProperties(null, true);
+        grid.CollapseAllGridItems();
       else
         grid.ExpandTopLevelProperties(grid.GetItemByFullName(section));
+    }
+
+    private void SettingsDialog_Shown(object? sender, EventArgs e)
+    {
+      ctx.Settings.Ui.RestorePropertyGridLabelWidth("SettingsDialog", grid);
+    }
+
+    private void SettingsDialog_FormClosing(object? sender, FormClosingEventArgs e)
+    {
+      ctx.Settings.Ui.SavePropertyGridLabelWidth("SettingsDialog", grid);
     }
 
     private void SelectSection(string section)
@@ -200,6 +210,9 @@ namespace SkyRoof
       if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.OutputStreamSettings.")))
         ctx.MainForm.ApplyOutputStreamSettings();
 
+      if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.KissServerSettings.")))
+        ctx.MainForm.ApplyKissServerSettings();
+
       if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.AudioSettings.")))
         ctx.MainForm.ApplyAudioSettings();
 
@@ -216,6 +229,9 @@ namespace SkyRoof
 
       if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.RotatorSettings.")))
         ctx.RotatorControl.ApplySettings(true);
+
+      if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.WaterfallSettings.")))
+        ctx.WaterfallPanel?.ApplySettings();
 
       if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.AmsatSettings.")))
         if (ctx.Settings.Amsat.Enabled)

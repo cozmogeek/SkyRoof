@@ -1,16 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
+﻿using System.Data;
 using System.Globalization;
-using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 using Serilog;
-using SGPdotNET.Observation;
 using WeifenLuo.WinFormsUI.Docking;
 
 namespace SkyRoof
@@ -19,6 +10,8 @@ namespace SkyRoof
   {
     private Context ctx;
     private SatnogsDbSatellite Satellite;
+    // shared, so we don't leak a GDI font handle per item on every rebuild
+    private Font? BoldFont;
 
     public TransmittersPanel()
     {
@@ -34,6 +27,7 @@ namespace SkyRoof
 
       ctx.TransmittersPanel = this;
       ctx.MainForm.TransmittersMNU.Checked = true;
+      ctx.Settings.Ui.RestoreColumnWidths("TransmittersPanel", listView1);
       SetSatellite();
     }
 
@@ -58,18 +52,21 @@ namespace SkyRoof
       Log.Information("Closing TransmittersPanel");
       ctx.TransmittersPanel = null;
       ctx.MainForm.TransmittersMNU.Checked = false;
+      ctx.Settings.Ui.SaveColumnWidths("TransmittersPanel", listView1);
     }
 
     private void CreateTransmitterItems()
     {
+      BoldFont ??= new Font(listView1.Font, FontStyle.Bold);
+
       listView1.BeginUpdate();
       listView1.Items.Clear();
       listView1.Groups.Clear();
       listView1.Groups.Add(new ListViewGroup("SatNOGS"));
       listView1.Groups.Add(new ListViewGroup("JE9PEL"));
 
-      // satnogs transmitters
-      foreach (var tx in Satellite.Transmitters)
+      // satnogs transmitters (pre-sorted: the ListView's own Sorting can't be used with Groups)
+      foreach (var tx in Satellite.Transmitters.OrderBy(tx => tx.description))
       {
         // columns
         var item = new ListViewItem([
@@ -83,7 +80,7 @@ namespace SkyRoof
         // highlighting
         if (tx.IsVhf()) item.BackColor = Color.LightGoldenrodYellow;
         if (tx.IsUhf()) item.BackColor = Color.LightCyan;
-        if (tx.service == "Amateur") item.Font = new(item.Font, FontStyle.Bold);
+        if (tx.service == "Amateur") item.Font = BoldFont;
         if (!tx.alive || tx.status != "active") item.ForeColor = Color.Silver; //item.Font = new(item.Font, FontStyle.Strikeout);
 
         // tooltip
@@ -93,7 +90,7 @@ namespace SkyRoof
       }
 
       // JE9PEL transmitters
-      foreach (var t in Satellite.JE9PELtransmitters)
+      foreach (var t in Satellite.JE9PELtransmitters.OrderBy(t => t.Mode))
       {
         var item = new ListViewItem([t.Mode, t.Downlink, t.Uplink]);
         item.Group = listView1.Groups[1];

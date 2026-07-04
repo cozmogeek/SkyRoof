@@ -97,15 +97,21 @@ namespace SkyRoof
       DrawTransmitters(g);
     }
 
+    // true when the radio is tuned to a downlink (satellite or terrestrial);
+    // the passband and carrier are drawn from RadioLink, independent of the SDR/Slicer
+    private bool HasTunedDownlink => ctx?.FrequencyControl?.RadioLink?.CorrectedDownlinkFrequency > 0;
+
     private RectangleF GetPassbandRect(bool includeRit = false)
     {
-      double centerFrequency = (double)ctx.FrequencyControl.RadioLink.CorrectedDownlinkFrequency! + (ctx.Slicer?.GetModeoffset() ?? 0);
+      var radioLink = ctx.FrequencyControl.RadioLink;
+      var mode = radioLink.DownlinkMode;
+      double centerFrequency = radioLink.CorrectedDownlinkFrequency + Slicer.GetModeOffset(mode);
 
-      if (ctx.FrequencyControl.RadioLink.RitEnabled && !includeRit) 
-        centerFrequency -= ctx.FrequencyControl.RadioLink.RitOffset;
+      if (radioLink.RitEnabled && !includeRit)
+        centerFrequency -= radioLink.RitOffset;
 
       double minWing = 3 * VisibleBandwidth / width;
-      double wing = Math.Max(minWing, ctx.Slicer.Bandwidth / 2);
+      double wing = Math.Max(minWing, Slicer.GetBandwidth(mode) / 2);
 
       float centerPix = (float)Math.Round(FreqToPixel(centerFrequency));
       float wingPix = (float)Math.Round(wing * width / VisibleBandwidth);
@@ -116,7 +122,7 @@ namespace SkyRoof
 
     private void DrawPassband(Graphics g)
     {
-      if (ctx?.Slicer?.Enabled != true) return;
+      if (!HasTunedDownlink) return;
 
       // main passband
       var rect = GetPassbandRect();
@@ -350,7 +356,7 @@ namespace SkyRoof
 
     internal bool IsMouseInFilter(int x)
     {
-      if (ctx?.Slicer?.Enabled != true) return false;
+      if (!HasTunedDownlink) return false;
 
       var rect = GetPassbandRect();
       return x >= rect.Left && x <= rect.Right;

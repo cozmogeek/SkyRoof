@@ -16,10 +16,27 @@ namespace SkyRoof
   public partial class SatelliteDetailsWidget : UserControl
   {
     private SatnogsDbSatellite? Satellite;
+    // shared, so we don't leak a GDI font handle per item on every rebuild
+    private Font? BoldFont;
 
     public SatelliteDetailsWidget()
     {
       InitializeComponent();
+    }
+
+    internal void RestoreLayout(UiSettings ui)
+    {
+      ui.RestoreColumnWidths("SatelliteDetailsForm", listView1);
+      ui.RestorePropertyGridLabelWidth("SatelliteDetailsForm", SatellitePropertyGrid);
+      if (ui.SatelliteDetailsForm.SplitterDistance > 0)
+        splitContainer1.SplitterDistance = ui.SatelliteDetailsForm.SplitterDistance;
+    }
+
+    internal void SaveLayout(UiSettings ui)
+    {
+      ui.SaveColumnWidths("SatelliteDetailsForm", listView1);
+      ui.SavePropertyGridLabelWidth("SatelliteDetailsForm", SatellitePropertyGrid);
+      ui.SatelliteDetailsForm.SplitterDistance = splitContainer1.SplitterDistance;
     }
 
     internal void ShowSatellite(SatnogsDbSatellite? satellite)
@@ -43,6 +60,8 @@ namespace SkyRoof
 
     private void CreateTransmitterItems()
     {
+      BoldFont ??= new Font(listView1.Font, FontStyle.Bold);
+
       listView1.BeginUpdate();
       listView1.Items.Clear();
       listView1.Groups.Clear();
@@ -63,7 +82,7 @@ namespace SkyRoof
         // highlighting
         if (tx.IsVhf()) item.BackColor = Color.LightGoldenrodYellow;
         if (tx.IsUhf()) item.BackColor = Color.LightCyan;
-        if (tx.service == "Amateur") item.Font = new(item.Font, FontStyle.Bold);
+        if (tx.service == "Amateur") item.Font = BoldFont;
         if (!tx.alive || tx.status != "active") item.ForeColor = Color.Silver; 
         
         // tooltip

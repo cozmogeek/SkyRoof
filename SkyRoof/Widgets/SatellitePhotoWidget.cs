@@ -26,12 +26,11 @@ namespace SkyRoof
 
     public void SetSatellite(SatnogsDbSatellite? sat)
     {
-      Url = null;
-
       if (sat == null)
       {
         CurrentSatId = null;
         SetImage(null);
+        Url = null;
         return;
       }
 
@@ -43,6 +42,7 @@ namespace SkyRoof
       if (string.IsNullOrEmpty(sat.image))
       {
         SetImage(null);
+        Url = null;
         return;
       }
 

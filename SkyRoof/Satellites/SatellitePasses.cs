@@ -119,7 +119,7 @@ namespace SkyRoof
         sat.Transmitters.Any(tx => tx.DownlinkLow >= StartFrequency) &&
         sat.Transmitters.Any(tx => tx.DownlinkLow <= EndFrequency));
     }
-  }
+}
 
 
   //----------------------------------------------------------------------------------------------
@@ -253,8 +253,10 @@ namespace SkyRoof
       return satellite?.Tracker.Observe(GroundStation, utcNow);
     }
 
-    internal SatellitePass? GetNextPass(SatnogsDbSatellite satellite)
+    internal SatellitePass? GetNextPass(SatnogsDbSatellite? satellite)
     {
+      if (satellite == null) return null;
+
       var now = DateTime.UtcNow;
       return ComputePassesFor(satellite, now, now.AddDays(1)).OrderBy(pass => pass.StartTime).FirstOrDefault();
     }

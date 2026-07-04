@@ -15,6 +15,37 @@ namespace SkyRoof
     public SatellitePassesPanelSettings SatellitePassesPanel { get; set; } = new();
     public string DefaultDockingString => Encoding.UTF8.GetString(Properties.Resources.default_docking);
 
+    // column widths of Details-view ListViews, keyed by a caller-supplied name so the same
+    // control's widths are saved when its panel/form closes and restored when it is recreated
+    public Dictionary<string, int[]> ListViewColumnWidths { get; set; } = new();
+
+    public void SaveColumnWidths(string key, ListView listView)
+    {
+      ListViewColumnWidths[key] = listView.Columns.Cast<ColumnHeader>().Select(c => c.Width).ToArray();
+    }
+
+    public void RestoreColumnWidths(string key, ListView listView)
+    {
+      if (!ListViewColumnWidths.TryGetValue(key, out var widths)) return;
+      int count = Math.Min(widths.Length, listView.Columns.Count);
+      for (int i = 0; i < count; i++) listView.Columns[i].Width = widths[i];
+    }
+
+    // width of the label column of PropertyGrids, keyed by a caller-supplied name
+    public Dictionary<string, int> PropertyGridLabelWidths { get; set; } = new();
+
+    public void SavePropertyGridLabelWidth(string key, PropertyGrid grid)
+    {
+      int width = VE3NEA.PropertyGridEx.GetLabelWidth(grid);
+      if (width > 0) PropertyGridLabelWidths[key] = width;
+    }
+
+    public void RestorePropertyGridLabelWidth(string key, PropertyGrid grid)
+    {
+      if (PropertyGridLabelWidths.TryGetValue(key, out int width))
+        VE3NEA.PropertyGridEx.SetLabelWidth(grid, width);
+    }
+
     public void StoreWindowPosition(Form form)
     {
       if (form.WindowState == FormWindowState.Normal)

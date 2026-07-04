@@ -2,6 +2,13 @@
 
 _by Marcus PY2PLL_
 
+> [!NOTE]
+> This approach is **deprecated**. SkyRoof now has a [built-in telemetry decoder](setting_up_telemetry_decoding.md)
+> that decodes FSK, AFSK, GFSK, GMSK and BPSK telemetry directly, with no external sound modem or
+> Virtual Audio Cable required — use it whenever the satellite's modulation is supported. The
+> instructions below are kept for cases where an external sound modem is still needed, for example
+> the UZ7HO modems support some packet/deframer formats that the built-in decoder does not yet handle.
+
 An external program is needed to decode and display common information usually disseminated using FSK or AFSK. In this tutorial the UZ7HO sound modems will be used. More information about these modems can be found at the
 [UZ7HO Personal page](https://uz7.ho.ua/) under **Packet-Radio** - English version.
 

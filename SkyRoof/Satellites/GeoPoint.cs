@@ -167,7 +167,9 @@
       double sL = Math.Sin(point.LongitudeRad - LongitudeRad);
       double cL = Math.Cos(point.LongitudeRad - LongitudeRad);
 
-      path.DistanceRad = Math.Acos(s1 * s2 + c1 * c2 * cL);
+      // clamp to avoid NaN from rounding past 1 (e.g. distance from a point to itself)
+      double cosDist = Math.Max(-1, Math.Min(1, s1 * s2 + c1 * c2 * cL));
+      path.DistanceRad = Math.Acos(cosDist);
 
       path.AzimuthRad = Math.Atan2(sL * c2, c1 * s2 - s1 * c2 * cL);
 

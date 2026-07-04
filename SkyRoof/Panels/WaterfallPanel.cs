@@ -6,7 +6,9 @@ namespace SkyRoof
   public partial class WaterfallPanel : DockContent
   {
     public Context ctx;
-    private double SdrCenterFrequency => ctx?.FrequencyControl?.GetSdrRfCenter() ?? ctx?.Sdr?.Info?.Frequency ?? SdrConst.UHF_CENTER_FREQUENCY;
+    private double SdrCenterFrequency => ctx?.Sdr == null
+      ? DefaultNoSdrCenter()
+      : ctx.FrequencyControl.GetSdrRfCenter();
     private double MaxBandwidth => ctx?.Sdr?.Info?.MaxBandwidth ?? SdrConst.MAX_BANDWIDTH;
     private double SamplingRate => ctx?.Sdr?.Info?.SampleRate ?? SdrConst.MAX_BANDWIDTH;
 
@@ -32,6 +34,7 @@ namespace SkyRoof
 
       ScaleControl.ctx = ctx;
       ScaleControl.BuildLabels();
+      if (ctx.Sdr == null) InitScaleForNoSdr();
       ScaleControl.MouseMove += ScaleControl_MouseMove;
       ScaleControl.MouseDown += ScaleControl_MouseDown;
       ScaleControl.MouseUp += ScaleControl_MouseUp; 
@@ -57,9 +60,14 @@ namespace SkyRoof
       ScaleControl.BuildLabels();
     }
 
+    private WaterfallQuality lastAppliedQuality = WaterfallQuality.Auto;
+    private WaterfallSildersDlg? openSlidersDlg;
+
     public void ApplySettings()
     {
       var sett = ctx.Settings.Waterfall;
+      WaterfallControl.Quality = sett.Quality;
+      WaterfallControl.PerfCountersEnabled = sett.ShowPerformanceCounters;
       WaterfallControl.Brightness = sett.Brightness;
       WaterfallControl.Contrast = sett.Contrast;
       int paletteIndex = Math.Min(ctx.PaletteManager.Palettes.Count() - 1, sett.PaletteIndex);
@@ -67,6 +75,19 @@ namespace SkyRoof
       WaterfallControl.Refresh();
 
       ctx.MainForm.SetWaterfallSpeed();
+      openSlidersDlg?.SyncPerformanceCountersFromSettings();
+
+      if (sett.Quality != lastAppliedQuality)
+      {
+        lastAppliedQuality = sett.Quality;
+        if (WaterfallControl.RecreateTexturesIfNeeded())
+        {
+          // Spectrum analyzer depends on WaterfallControl.SpectraWidth.
+          ctx.MainForm.DestroySpectrumAnalyzer();
+          ctx.MainForm.CreateSpectrumAnalyzer();
+          ctx.MainForm.ConfigureWaterfall();
+        }
+      }
     }
 
     internal void SetPassband()
@@ -79,6 +100,24 @@ namespace SkyRoof
 
       ctx.SdrPasses.UpdateFrequencyRange();
       ScaleControl.BuildLabels();
+    }
+
+    // center frequency to use for the scale when no SDR is configured;
+    // follows the selected downlink so its satellite labels stay in view
+    private double DefaultNoSdrCenter()
+    {
+      double downlink = ctx?.FrequencyControl?.RadioLink?.CorrectedDownlinkFrequency ?? 0;
+      return downlink > 1e6 ? downlink : SdrConst.UHF_CENTER_FREQUENCY;
+    }
+
+    // no SDR configured: ConfigureWaterfall/SetPassband never run, so set the scale
+    // to a default window centered on the selected downlink instead of leaving it at 0 Hz
+    private void InitScaleForNoSdr()
+    {
+      ScaleControl.CenterFrequency = SdrCenterFrequency;
+      ScaleControl.VisibleBandwidth = SdrConst.MAX_BANDWIDTH;
+      ValidateWaterfallViewport();
+      ScaleControl.Refresh();
     }
 
     public void SetCenterFrequency(double frequency)
@@ -103,9 +142,22 @@ namespace SkyRoof
 
     private void SlidersBtn_Click(object sender, EventArgs e)
     {
-      var dlg = new WaterfallSildersDlg(ctx);
-      dlg.Location = WaterfallControl.PointToScreen(new Point(2, 2));
-      dlg.Show();
+      if (openSlidersDlg != null && !openSlidersDlg.IsDisposed && openSlidersDlg.Visible)
+      {
+        openSlidersDlg.Close();
+        return;
+      }
+
+      openSlidersDlg = new WaterfallSildersDlg(ctx);
+      openSlidersDlg.FormClosed += (_, _) => openSlidersDlg = null;
+      openSlidersDlg.Location = WaterfallControl.PointToScreen(new Point(2, 2));
+      openSlidersDlg.Show();
+    }
+
+    internal bool IsPointOnSlidersButton(Point screenPoint)
+    {
+      var bounds = new Rectangle(SlidersBtn.PointToScreen(Point.Empty), SlidersBtn.Size);
+      return bounds.Contains(screenPoint);
     }
 
     private const double MinHzPerPixel = 20;
@@ -415,7 +467,7 @@ namespace SkyRoof
     {
       var label = ScaleControl.GetLabelUnderCursor(MouseMovePos);
       var sat = label.Pass.Satellite;
-      SatelliteDetailsForm.ShowSatellite(sat, ctx.MainForm);
+      SatelliteDetailsForm.ShowSatellite(sat, ctx.MainForm, ctx);
     }
   }
 }

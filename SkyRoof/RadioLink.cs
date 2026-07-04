@@ -68,6 +68,18 @@ namespace SkyRoof
     public double UplinkFrequency, CorrectedUplinkFrequency;
     public double DopplerFactor = 0;
     public bool IsAboveHorizon;
+    // true when the propagator returned a valid observation this tick (independent of elevation);
+    // false means DopplerFactor was forced to 0, a discontinuity the rate estimator must not ramp
+    public bool HasObservation;
+
+    // estimates the doppler rate for the Slicer's continuous correction (see DopplerRateEstimator)
+    private readonly DopplerRateEstimator DopplerEstimator = new();
+
+    // downlink offset doppler rate (Hz/s) for the Slicer's continuous correction; 0 when correction
+    // is off. CorrectedDownlinkFrequency *= (1 - DopplerFactor), so the offset's doppler term is
+    // -DownlinkFrequency * DopplerFactor and its time derivative is -DownlinkFrequency * factorRate.
+    public double DownlinkDopplerRate =>
+      DownlinkDopplerCorrectionEnabled ? -DownlinkFrequency * DopplerEstimator.FactorRate : 0;
     public bool HasUplink => !IsTerrestrial && UplinkFrequency > 0 && SatnogsDbTransmitter.IsHamFrequency(UplinkFrequency);
     public bool IsTransponder => Tx != null &&
       Tx.downlink_high.HasValue && Tx.downlink_high != Tx.downlink_low &&
@@ -80,18 +92,25 @@ namespace SkyRoof
 
     public void ObserveSatellite(SatellitePasses engine)
     {
-      var observation = engine.ObserveSatellite(Sat, DateTime.UtcNow);
+      var now = DateTime.UtcNow;
+      var observation = engine.ObserveSatellite(Sat, now);
 
       if (observation == null)
       {
         DopplerFactor = 0;
         IsAboveHorizon = false;
+        HasObservation = false;
       }
       else
       {
         DopplerFactor = observation.RangeRate / 3e5;
         IsAboveHorizon = observation.Elevation > 0;
+        HasObservation = true;
       }
+
+      // runs only here, the one place DopplerFactor is refreshed, so the estimate cannot be
+      // desynced by the many other callers of ComputeFrequencies
+      DopplerEstimator.Update(DopplerFactor, HasObservation, Sat, now);
     }
 
     internal void ComputeFrequencies()

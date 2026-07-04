@@ -157,6 +157,7 @@ namespace SkyRoof
       StartPosition = FormStartPosition.CenterParent;
       Text = "SDR Devices";
       FormClosing += SdrDevicesDialog_FormClosing;
+      Shown += SdrDevicesDialog_Shown;
       DeviceListMenu.ResumeLayout(false);
       ResumeLayout(false);
       PerformLayout();

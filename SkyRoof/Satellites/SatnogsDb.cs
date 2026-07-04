@@ -1,9 +1,11 @@
 ﻿using System.ComponentModel;
 using System.DirectoryServices.ActiveDirectory;
 using System.Globalization;
+using System.IO.Compression;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Linq;
 using Serilog;
 using SGPdotNET.TLE;
 using VE3NEA;
@@ -33,7 +35,16 @@ namespace SkyRoof
       DownloadsFolder = Path.Combine(DataFolder, "Downloads");
       Directory.CreateDirectory(DownloadsFolder);
 
+      // seed the user-editable transmitter overrides file from the embedded default on first run
+      string txOverrideFile = Path.Combine(DataFolder, "transmitters-override.json");
+
+      //if (!File.Exists(txOverrideFile)) 
+        File.WriteAllBytes(txOverrideFile, Properties.Resources.transmitters_override);
+
       JsonSettings.Converters.Add(new IsoDateTimeConverter { DateTimeFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ssK" });
+
+      // GitHub's codeload host is happier with an explicit User-Agent.
+      DownloadHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("SkyRoof");
     }
 
     public void LoadFromFile()
@@ -96,18 +107,28 @@ namespace SkyRoof
 
       await Download("satellites");
       Log.Information("satellites downloaded");
-      DownloadProgress?.Invoke(this, new(33, null));
+      DownloadProgress?.Invoke(this, new(25, null));
 
       await Download("transmitters");
       Log.Information("transmitters downloaded");
-      DownloadProgress?.Invoke(this, new(66, null));
+      DownloadProgress?.Invoke(this, new(50, null));
 
       await Download("tle");
       Log.Information("tle downloaded");
-      DownloadProgress?.Invoke(this, new(99, null));
+      DownloadProgress?.Invoke(this, new(70, null));
 
       await DownloadJE9PEL();
       Log.Information("JE9PEL downloaded");
+      DownloadProgress?.Invoke(this, new(85, null));
+
+      // gr-satellites satyaml is enrichment only — a failure here must not abort the download.
+      try
+      {
+        await DownloadSatyaml();
+        Log.Information("satyaml downloaded");
+      }
+      catch (OperationCanceledException) { throw; }
+      catch (Exception ex) { Log.Warning(ex, "satyaml download/extract failed (enrichment skipped)"); }
       DownloadProgress?.Invoke(this, new(99, null));
     }
 
@@ -147,6 +168,42 @@ namespace SkyRoof
       File.WriteAllText(Path.Combine(DownloadsFolder, "JE9PEL.csv"), csv);
     }
 
+    // Download the gr-satellites repo zip and extract only python/satyaml/*.yml into Downloads\satyaml.
+    private async Task DownloadSatyaml()
+    {
+      const string url = "https://codeload.github.com/daniestevez/gr-satellites/zip/refs/heads/main";
+      byte[] zipBytes = await DownloadHttpClient.GetByteArrayAsync(url, cts.Token);
+      cts.Token.ThrowIfCancellationRequested();
+
+      string zipPath = Path.Combine(DownloadsFolder, "gr-satellites.zip");
+      File.WriteAllBytes(zipPath, zipBytes);
+      ExtractSatyaml(zipPath);
+    }
+
+    private void ExtractSatyaml(string zipPath)
+    {
+      string destDir = Path.Combine(DownloadsFolder, "satyaml");
+      Directory.CreateDirectory(destDir);
+
+      // start clean so a re-download does not leave stale .yml files behind
+      foreach (string f in Directory.EnumerateFiles(destDir, "*.yml")) File.Delete(f);
+
+      using ZipArchive archive = ZipFile.OpenRead(zipPath);
+      int count = 0;
+      foreach (ZipArchiveEntry entry in archive.Entries)
+      {
+        string full = entry.FullName.Replace('\\', '/');
+        if (string.IsNullOrEmpty(entry.Name) ||
+            !full.Contains("/python/satyaml/") ||
+            !full.EndsWith(".yml", StringComparison.OrdinalIgnoreCase))
+          continue;
+
+        entry.ExtractToFile(Path.Combine(destDir, entry.Name), overwrite: true);
+        count++;
+      }
+      Log.Information($"satyaml: extracted {count} .yml files");
+    }
+
 
 
 
@@ -173,6 +230,14 @@ namespace SkyRoof
         ImportSatnogsTransmitters();
         ImportSatnogsTle();
         ImportJE9PEL();
+
+        // enrichment only — never let a satyaml problem abort the import
+        try { ImportSatyaml(); }
+        catch (Exception ex) { Log.Warning(ex, "satyaml import failed (enrichment skipped)"); }
+
+        // local hand-curated overrides on top of satyaml — enrichment only, never abort the import
+        try { ImportTransmitterOverrides(); }
+        catch (Exception ex) { Log.Warning(ex, "transmitter overrides import failed (enrichment skipped)"); }
 
         var satNames = new SatelliteNames();
 
@@ -225,6 +290,7 @@ namespace SkyRoof
         var sat = SatelliteList.GetValueOrDefault(t.sat_id);
         if (sat != null)
         {
+          t.DownlinkMode = ModeMnemonic.ToModeName(t.mode_id, t.mode);
           sat.Transmitters.Add(t);
           t.Satellite = sat;
         }
@@ -239,6 +305,65 @@ namespace SkyRoof
       foreach (SatnogsDbTle tle in tles)
         if (SatelliteList.TryGetValue(tle.sat_id, out SatnogsDbSatellite sat))
           sat.Tle = tle;
+    }
+
+    // Match gr-satellites satyaml entries to transmitters by NORAD + nearest baud, attach gr_sats.
+    private void ImportSatyaml()
+    {
+      string dir = Path.Combine(DownloadsFolder, "satyaml");
+      SatyamlDb? satyaml = SatyamlDb.Load(dir);
+      if (satyaml == null)
+      {
+        Log.Warning("satyaml folder not found; skipping gr-satellites enrichment");
+        return;
+      }
+
+      int matched = 0;
+      foreach (var sat in Satellites)
+      {
+        if (sat.norad_cat_id == null) continue;
+        foreach (var tx in sat.Transmitters)
+        {
+          GrSatsInfo? info = satyaml.Find(sat.norad_cat_id.Value, tx.baud);
+          if (info != null) { tx.gr_sats = info; matched++; }
+        }
+      }
+      Log.Information($"satyaml: enriched {matched} transmitters");
+    }
+
+    // Apply hand-curated GrSatsInfo overrides from Data\transmitters-override.json on top of the
+    // satyaml enrichment. The file maps a transmitter uuid to a partial GrSatsInfo object that lists
+    // only the fields to override; absent fields are left untouched (PopulateObject merges in place).
+    // This is how we supply data the SatNOGS DB lacks and gr-satellites has no satyaml entry for
+    // (e.g. FSK deviation), or correct wrong DB values (e.g. baud).
+    private void ImportTransmitterOverrides()
+    {
+      string path = Path.Combine(DataFolder, "transmitters-override.json");
+      if (!File.Exists(path)) return;
+
+      var overrides = JsonConvert.DeserializeObject<Dictionary<string, JObject>>(File.ReadAllText(path));
+      if (overrides == null) return;
+
+      // index every transmitter by uuid for a quick lookup
+      var byUuid = new Dictionary<string, SatnogsDbTransmitter>();
+      foreach (var sat in Satellites)
+        foreach (var tx in sat.Transmitters)
+          byUuid[tx.uuid] = tx;
+
+      int applied = 0;
+      foreach (var (uuid, fields) in overrides)
+      {
+        if (!byUuid.TryGetValue(uuid, out var tx))
+        {
+          Log.Warning($"transmitter override: uuid {uuid} not found in the imported transmitters");
+          continue;
+        }
+
+        tx.gr_sats ??= new GrSatsInfo();
+        JsonConvert.PopulateObject(fields.ToString(), tx.gr_sats);
+        applied++;
+      }
+      Log.Information($"transmitter overrides: applied {applied} of {overrides.Count}");
     }
 
     // example: RS-44;44909;145.935-145.995;435.670-435.610;435.605 ;SSB CW;RS44;Operational

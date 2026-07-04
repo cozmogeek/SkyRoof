@@ -16,5 +16,25 @@ namespace VE3NEA
     {
       InitializeComponent();
     }
+
+    /// <summary>
+    /// Shows a wait box, runs <paramref name="action"/>, then closes the box.
+    /// Use around slow operations such as FFTW plan creation. Call on the UI thread.
+    /// </summary>
+    public static void Run(Action action)
+    {
+      var box = new WaitBox();
+      box.Show();
+      Application.DoEvents();
+      try
+      {
+        action();
+      }
+      finally
+      {
+        box.Close();
+        box.Dispose();
+      }
+    }
   }
 }

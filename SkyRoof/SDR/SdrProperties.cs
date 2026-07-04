@@ -142,7 +142,7 @@ namespace VE3NEA
       {
         case SoapySDRArgInfoType.Bool: return Property.Value == "true";
         case SoapySDRArgInfoType.Int: return int.Parse(Property.Value);
-        case SoapySDRArgInfoType.Float: return float.Parse(Property.Value, CultureInfo.InvariantCulture);
+        case SoapySDRArgInfoType.Float: return float.Parse(Property.Value);
         default: return OptionToName();
       }
     }

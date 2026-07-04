@@ -9,7 +9,7 @@ using VE3NEA;
 
 namespace SkyRoof
 {
-  public class IndexedTexture
+  public class IndexedTexture : IDisposable
   {
     public const int PALETTE_SIZE = 256;
     
@@ -19,6 +19,7 @@ namespace SkyRoof
     private readonly int Height;
     private int[] IntBuffer;
     private uint[] fraameBufferIds = new uint[1];
+    private bool disposed;
 
     public IndexedTexture(OpenGL gl, int width, int height)
     {
@@ -39,6 +40,16 @@ namespace SkyRoof
 
       gl.TexImage2D(OpenGL.GL_TEXTURE_2D, 0, OpenGL.GL_R32F, Width, Height, 0,
         OpenGL.GL_RED, OpenGL.GL_BYTE, IntPtr.Zero);
+      CheckError(gl);
+
+      // Set texture parameters once (avoid per-frame state churn).
+      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_MIN_FILTER, OpenGL.GL_NEAREST); // shrink
+      CheckError(gl);
+      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_MAG_FILTER, OpenGL.GL_LINEAR);  // stretch
+      CheckError(gl);
+      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_WRAP_S, OpenGL.GL_CLAMP_TO_EDGE);  // x
+      CheckError(gl);
+      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_WRAP_T, OpenGL.GL_REPEAT); // y
       CheckError(gl);
 
 
@@ -82,6 +93,16 @@ namespace SkyRoof
       gl.TexImage2D(OpenGL.GL_TEXTURE_2D, 0, OpenGL.GL_RGB, PALETTE_SIZE, 1, 0, 
         OpenGL.GL_BGRA, OpenGL.GL_UNSIGNED_BYTE, palette);
       CheckError(gl);
+
+      // Palette texture parameters are constant.
+      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_MIN_FILTER, OpenGL.GL_NEAREST);
+      CheckError(gl);
+      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_MAG_FILTER, OpenGL.GL_NEAREST);
+      CheckError(gl);
+      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_WRAP_S, OpenGL.GL_CLAMP_TO_EDGE);
+      CheckError(gl);
+      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_WRAP_T, OpenGL.GL_CLAMP_TO_EDGE);
+      CheckError(gl);
     }
 
     public void ClearBitmap()
@@ -100,11 +121,18 @@ namespace SkyRoof
 
     public void SetRows(int rowIndex, int rowCount, float[] data)
     {
-      CheckError(gl, false);
+      SetRows(rowIndex, rowCount, data, data.Length);
+    }
+
+    public void SetRows(int rowIndex, int rowCount, float[] data, int srcFloatCount)
+    {
+      int expectedFloats = Width * rowCount;
+      if (srcFloatCount != expectedFloats)
+        throw new ArgumentException($"Expected {expectedFloats} floats (Width * rowCount), got {srcFloatCount}.", nameof(srcFloatCount));
 
       // TexSubImage2D in SharpGL accepts only int[], so give it floats in an int[] buffer
-      if ((IntBuffer?.Length ?? 0) < data.Length) IntBuffer = new int[data.Length];
-      Buffer.BlockCopy(data, 0, IntBuffer, 0, data.Length * sizeof(float)); 
+      if ((IntBuffer?.Length ?? 0) < srcFloatCount) IntBuffer = new int[srcFloatCount];
+      Buffer.BlockCopy(data, 0, IntBuffer, 0, srcFloatCount * sizeof(float));
 
       gl.BindTexture(OpenGL.GL_TEXTURE_2D, textureIds[0]);
       CheckError(gl);
@@ -116,35 +144,30 @@ namespace SkyRoof
 
     public void Bind(OpenGL gl)
     {
-      CheckError(gl, false);
-
       gl.ActiveTexture(OpenGL.GL_TEXTURE0);
-      CheckError(gl);
       gl.BindTexture(OpenGL.GL_TEXTURE_2D, textureIds[0]);
-      CheckError(gl);
-
-      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_MIN_FILTER, OpenGL.GL_NEAREST); // shrink
-      CheckError(gl);
-      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_MAG_FILTER, OpenGL.GL_LINEAR);  // stretch
-      CheckError(gl);
-      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_WRAP_S, OpenGL.GL_CLAMP_TO_EDGE);  // x
-      CheckError(gl);
-      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_WRAP_T, OpenGL.GL_REPEAT); // y
-      CheckError(gl);
 
       gl.ActiveTexture(OpenGL.GL_TEXTURE1);
-      CheckError(gl);
       gl.BindTexture(OpenGL.GL_TEXTURE_2D, textureIds[1]);
-      CheckError(gl);
+    }
 
-      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_MIN_FILTER, OpenGL.GL_NEAREST);
-      CheckError(gl);
-      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_MAG_FILTER, OpenGL.GL_NEAREST);
-      CheckError(gl);
-      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_WRAP_S, OpenGL.GL_CLAMP_TO_EDGE);
-      CheckError(gl);
-      gl.TexParameter(OpenGL.GL_TEXTURE_2D, OpenGL.GL_TEXTURE_WRAP_T, OpenGL.GL_CLAMP_TO_EDGE);
-      CheckError(gl);
+    public void Dispose()
+    {
+      if (disposed) return;
+      disposed = true;
+
+      if (textureIds[0] != 0 || textureIds[1] != 0)
+      {
+        gl.DeleteTextures(2, textureIds);
+        textureIds[0] = 0;
+        textureIds[1] = 0;
+      }
+
+      if (fraameBufferIds[0] != 0)
+      {
+        gl.DeleteFramebuffersEXT(1, fraameBufferIds);
+        fraameBufferIds[0] = 0;
+      }
     }
 
     private void CheckError(OpenGL gl, bool log = true)

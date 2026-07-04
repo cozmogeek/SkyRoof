@@ -60,3 +60,19 @@ This has three important consequences:
 If your computer does not meet these requirements, you can still use the pass prediction, Doppler correction,
 radio control and rotator control functions in SkyRoof, just disable the SDR function and close the Waterfall
 Display panel.
+
+## Waterfall Quality
+
+If the waterfall scrolls sluggishly or your video card struggles with the large oversampled
+spectra, you can lower the **Quality** setting. Open **Tools / Settings**, find the **Quality**
+field in the Waterfall section, and choose one of the following values:
+
+- **Auto (maximum detail)** - the default. SkyRoof uses the largest spectrum and texture size
+    your hardware can handle, giving the highest resolution and sensitivity.
+- **High**, **Medium**, **Low (best for older GPUs)** - progressively reduce the internal
+    spectrum and texture size. A lower quality requires less CPU power and less video card
+    texture memory, which improves performance on older or low-end hardware.
+
+The Quality setting only affects the internal resolution of the waterfall image. It does not
+change the SDR sampling rate, so all signals in the satellite segment remain visible at every
+quality level.

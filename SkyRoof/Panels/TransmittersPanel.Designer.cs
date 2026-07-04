@@ -54,7 +54,9 @@
       listView1.ShowItemToolTips = true;
       listView1.Size = new Size(471, 325);
       listView1.SmallImageList = imageList1;
-      listView1.Sorting = SortOrder.Ascending;
+      // Sorting must stay None: the ListView's built-in sort corrupts native state and
+      // access-violates when items are assigned to Groups. Items are pre-sorted in code instead.
+      listView1.Sorting = SortOrder.None;
       listView1.TabIndex = 4;
       listView1.UseCompatibleStateImageBehavior = false;
       listView1.View = View.Details;

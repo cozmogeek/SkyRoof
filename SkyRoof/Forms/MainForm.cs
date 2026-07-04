@@ -63,6 +63,7 @@ namespace SkyRoof
 
       ApplyAudioSettings();
       ApplyOutputStreamSettings();
+      ApplyKissServerSettings();
       ctx.CatControl.ApplySettings();
       ctx.RotatorControl.ApplySettings();
 
@@ -165,6 +166,7 @@ namespace SkyRoof
       ctx.SpeakerSoundcard.Dispose();
       ctx.AudioVacSoundcard?.Dispose();
       ctx.IqVacSoundcard?.Dispose();
+      ctx.KissServer.Dispose();
       Fft<Complex32>.SaveWisdom();
     }
 
@@ -182,6 +184,11 @@ namespace SkyRoof
         Environment.Exit(1); // unable to proceed without user details, terminate app
     }
 
+    private void Toolbar_Resize(object sender, EventArgs e)
+    {
+      UpdateSatellitePhotoVisibility();
+    }
+
 
 
 
@@ -194,8 +201,10 @@ namespace SkyRoof
     {
       Fft<Complex32>.LoadWisdom(Path.Combine(Utils.GetUserDataFolder(), "wsjtx_wisdom.dat"));
 
-      WidebandSpectrumAnalyzer = new(ctx.WaterfallPanel!.WaterfallControl.SpectraWidth, 6_000_000);
-      WidebandSpectrumAnalyzer.SpectrumAvailable += Spect_SpectrumAvailable;
+      // Show a wait box while the analyzer (and its FFTW plan) is built.
+      WaitBox.Run(() =>
+        WidebandSpectrumAnalyzer = new(ctx.WaterfallPanel!.WaterfallControl.SpectraWidth, 6_000_000));
+      WidebandSpectrumAnalyzer!.SpectrumAvailable += Spect_SpectrumAvailable;
     }
 
     public void DestroySpectrumAnalyzer()
@@ -286,6 +295,7 @@ namespace SkyRoof
 
       // output-stream routing applies gain; don't mutate the shared buffer used by recording/playback.
       ApplyIqOutputStreamGainAndRoute(e.Data, e.Count);
+      ctx.TelemetryPanel?.ProcessSamples(e);
     }
 
     private void Slicer_AudioDataAvailable(object? sender, DataEventArgs<float> e)
@@ -460,6 +470,14 @@ namespace SkyRoof
       GainWidget.ApplyAfGain();
       ctx.SpeakerSoundcard.Enabled = ctx.Settings.Audio.SpeakerEnabled;
       if (ctx.Slicer != null) ctx.Slicer.Squelch.Enabled = ctx.Settings.Audio.Squelch;
+    }
+
+    internal void ApplyKissServerSettings()
+    {
+      var sett = ctx.Settings.Telemetry.KissServer;
+
+      ctx.KissServer.Stop(); 
+      if (sett.Enabled) ctx.KissServer.Start(sett.Port);      
     }
 
     internal void ApplyOutputStreamSettings()
@@ -641,7 +659,8 @@ namespace SkyRoof
 
     private void EditGroupsMNU_Click(object sender, EventArgs e)
     {
-      var dlg = new SatelliteGroupsForm();
+      // using: ShowDialog does not auto-dispose the form; dispose it deterministically
+      using var dlg = new SatelliteGroupsForm();
       dlg.SetList(ctx);
       var rc = dlg.ShowDialog(this);
 
@@ -755,6 +774,14 @@ namespace SkyRoof
         ctx.QsoSchedulerPanel.Close();
     }
 
+    private void TelemetryMNU_Click(object sender, EventArgs e)
+    {
+      if (ctx.TelemetryPanel == null)
+        ShowFloatingPanel(new TelemetryPanel(ctx));
+      else
+        ctx.TelemetryPanel.Close();
+    }
+
     private void SettingsMNU_Click(object sender, EventArgs e)
     {
       new SettingsDialog(ctx).ShowDialog();
@@ -793,6 +820,17 @@ namespace SkyRoof
     {
       ctx.Settings.Ui.ResetDockingLayout(this);
     }
+
+    private void UpdateLabel_Click(object sender, EventArgs e)
+    {
+      Process.Start(new ProcessStartInfo(ctx.Settings.LatestVersion.Url!) { UseShellExecute = true });
+    }
+
+    private void RotatorTrackMNU_CheckedChanged(object sender, EventArgs e)
+    {
+      RotatorWidget.ToggleTracking();
+    }
+
 
 
 
@@ -954,6 +992,34 @@ namespace SkyRoof
 
 
 
+    //----------------------------------------------------------------------------------------------
+    //                                     toolbar
+    //----------------------------------------------------------------------------------------------
+    private void UpdateSatellitePhotoVisibility()
+    {
+      if (SatellitePhotoWidget == null) return;
+
+      // show photo only if the toolbar can fit every widget; include the photo's own width
+      // unconditionally so the test answers "would it fit if shown", not "does it fit hidden"
+      int required =
+        panel2.Width +
+        SatellitePhotoWidget.Width +
+        SatelliteSelecionWidget.Width +
+        panel1.Width +
+        FrequencyWidget.Width +
+        panel3.Width +
+        GainWidget.Width +
+        panel7.Width +
+        RotatorWidget.Width +
+        panel5.Width +
+        ClockPanel.Width;
+
+      SatellitePhotoWidget.Visible = Toolbar.ClientSize.Width >= required + 10;
+      SatellitePhotoSeparator.Visible = SatellitePhotoWidget.Visible;
+    }
+
+
+
 
     //----------------------------------------------------------------------------------------------
     //                                     docking
@@ -986,6 +1052,7 @@ namespace SkyRoof
         case "SkyRoof.Ft4ConsolePanel": return new Ft4ConsolePanel(ctx);
         case "SkyRoof.RecorderPanel": return new RecorderPanel(ctx);
         case "SkyRoof.QsoSchedulerPanel": return new QsoSchedulerPanel(ctx);
+        case "SkyRoof.TelemetryPanel": return new TelemetryPanel(ctx);
 
         default: return null;
       }
@@ -1041,6 +1108,7 @@ namespace SkyRoof
 
       AutoSelectMonitoredSatelliteForActivePass();
       AutoRecordSelectedMonitoredSatellite();
+      ctx.TelemetryPanel?.UpdateTxStatus();
 
       ShowCpuUsage();
     }
@@ -1195,12 +1263,14 @@ namespace SkyRoof
       ctx.QsoEntryPanel?.SetMode();
       ctx.RecorderPanel?.RememberRecordingEvents();
       ctx.MonitoredSatellitesPanel?.RefreshList();
+      ctx.TelemetryPanel?.SetTransmitter();
     }
 
     private void SatelliteSelector_SelectedPassChanged(object sender, EventArgs e)
     {
       SatellitePass? pass = ctx.SatelliteSelector.SelectedPass;
       ctx.SkyViewPanel?.SetPass(pass);
+      ctx.EarthViewPanel?.SetPass(pass);
       RotatorWidget.SetPass(pass);
     }
 
@@ -1282,44 +1352,6 @@ namespace SkyRoof
       // clear the selected pass so tracking logic knows we're between passes.
       ctx.SatelliteSelector.SetSelectedPass(null);
       RotatorWidget.Park();
-    }
-
-    private void UpdateLabel_Click(object sender, EventArgs e)
-    {
-      Process.Start(new ProcessStartInfo(ctx.Settings.LatestVersion.Url!) { UseShellExecute = true });
-    }
-
-    private void RotatorTrackMNU_CheckedChanged(object sender, EventArgs e)
-    {
-      RotatorWidget.ToggleTracking();
-    }
-
-    private void UpdateSatellitePhotoVisibility()
-    {
-      if (SatellitePhotoWidget == null) return;
-
-      // show photo only if the toolbar can fit every widget; include the photo's own width
-      // unconditionally so the test answers "would it fit if shown", not "does it fit hidden"
-      int required =
-        panel2.Width +
-        SatellitePhotoWidget.Width +
-        SatelliteSelecionWidget.Width +
-        panel1.Width +
-        FrequencyWidget.Width +
-        panel3.Width +
-        GainWidget.Width +
-        panel7.Width +
-        RotatorWidget.Width +
-        panel5.Width +
-        ClockPanel.Width;
-
-      SatellitePhotoWidget.Visible = Toolbar.ClientSize.Width >= required + 10;
-      SatellitePhotoSeparator.Visible = SatellitePhotoWidget.Visible;
-    }
-
-    private void Toolbar_Resize(object sender, EventArgs e)
-    {
-      UpdateSatellitePhotoVisibility();
     }
   }
 }

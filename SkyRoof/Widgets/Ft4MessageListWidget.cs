@@ -359,7 +359,8 @@ namespace SkyRoof
       foreach (var token in item.Tokens)
       {
         Font font = e.Font;
-        if (token.Underlined) font = new Font(e.Font, FontStyle.Underline);
+        Font? ownedFont = null;
+        if (token.Underlined) font = ownedFont = new Font(e.Font, FontStyle.Underline);
         else if (token.text == FontAwesomeIcons.Circle || token.text == FontAwesomeIcons.CircleQuestion) font = fontAwesome11;
 
         SizeF size = e.Graphics.MeasureString(token.text, font);
@@ -367,6 +368,8 @@ namespace SkyRoof
 
         e.Graphics.FillRectangle(token.bgBrush, rect);
         e.Graphics.DrawString(token.text, font, token.fgBrush, p);
+
+        ownedFont?.Dispose();
 
         p.X += size.Width;
         if (token.AppendSpace) p.X += spaceWidth;

@@ -250,25 +250,28 @@ namespace SkyRoof
     {
       if (e.Index < 0) { e.DrawBackground(); return; }
 
-      Color backColor = Color.White;
-      Color foreColor = e.ForeColor;
-      Font font = e.Font;
+      Brush backBrush = Brushes.White;
+      FontStyle style = FontStyle.Regular;
 
       var sat = (SatnogsDbSatellite)SatelliteComboBox.Items[e.Index]!;
 
-      if (sat.Flags.HasFlag(SatelliteFlags.Uhf)) backColor = Color.LightCyan;
-      else if (sat.Flags.HasFlag(SatelliteFlags.Vhf)) backColor = Color.LightGoldenrodYellow;
+      if (sat.Flags.HasFlag(SatelliteFlags.Uhf)) backBrush = Brushes.LightCyan;
+      else if (sat.Flags.HasFlag(SatelliteFlags.Vhf)) backBrush = Brushes.LightGoldenrodYellow;
 
-      if (sat.Flags.HasFlag(SatelliteFlags.Ham)) font = new(font, FontStyle.Bold);
-      if (!sat.status.StartsWith("alive")) foreColor = Color.Silver;
-      else if (sat.Tle == null) font = new(font, FontStyle.Strikeout);
+      if (sat.Flags.HasFlag(SatelliteFlags.Ham)) style |= FontStyle.Bold;
+      if (sat.status.StartsWith("alive") && sat.Tle == null) style |= FontStyle.Strikeout;
 
-      e.Graphics.FillRectangle(new SolidBrush(backColor), e.Bounds);
+      // derived font disposed after drawing; static Brushes need no disposal
+      Font? derivedFont = style == FontStyle.Regular ? null : new Font(e.Font, style);
+
+      e.Graphics.FillRectangle(backBrush, e.Bounds);
       e.DrawFocusRectangle();
 
       string text = sat.name;
       if (!GroupSatellites.Contains(sat)) text += " (not in group)";
-      e.Graphics.DrawString(text, font, Brushes.Black, e.Bounds);
+      e.Graphics.DrawString(text, derivedFont ?? e.Font, Brushes.Black, e.Bounds);
+
+      derivedFont?.Dispose();
     }
 
     private void TransmitterComboBox_DrawItem(object sender, DrawItemEventArgs e)
@@ -278,19 +281,20 @@ namespace SkyRoof
       Brush bacBrush = Brushes.White;
       Brush foreBrush = Brushes.Black;
 
-      Font font = e.Font;
-
       var tx = (SatnogsDbTransmitter)TransmitterComboBox.Items[e.Index];
 
       if (tx.IsUhf()) bacBrush = Brushes.LightCyan;
       else if (tx.IsVhf()) bacBrush = Brushes.LightGoldenrodYellow;
 
-      if (tx.service == "Amateur") font = new(font, FontStyle.Bold);
+      // derived font disposed after drawing; static Brushes need no disposal
+      Font? derivedFont = tx.service == "Amateur" ? new Font(e.Font, FontStyle.Bold) : null;
       if (!tx.alive || tx.status != "active") foreBrush = Brushes.Silver;
 
       e.Graphics.FillRectangle(bacBrush, e.Bounds);
-      e.Graphics.DrawString(tx.description, font, foreBrush, e.Bounds);
+      e.Graphics.DrawString(tx.description, derivedFont ?? e.Font, foreBrush, e.Bounds);
       e.DrawFocusRectangle();
+
+      derivedFont?.Dispose();
     }
   }
 }

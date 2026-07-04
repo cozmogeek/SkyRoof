@@ -66,6 +66,7 @@
       Ft4ConsoleMNU = new ToolStripMenuItem();
       RecorderMNU = new ToolStripMenuItem();
       QsoSchedulerMNU = new ToolStripMenuItem();
+      TelemetryMNU = new ToolStripMenuItem();
       toolStripMenuItem4 = new ToolStripSeparator();
       ResetWindowLayoutMNU = new ToolStripMenuItem();
       toolsToolStripMenuItem = new ToolStripMenuItem();
@@ -329,7 +330,7 @@
       // 
       // GroupViewPanelMNU
       // 
-      GroupViewPanelMNU.DropDownItems.AddRange(new ToolStripItem[] { GroupViewMNU, SatelliteDetailsMNU, MonitoredSatellitesMNU, TransmittersMNU, SatellitePassesMNU, WaterfallMNU, TimelineMNU, SkyViewMNU, EarthViewMNU, QsoEntryMNU, Ft4ConsoleMNU, RecorderMNU, toolStripMenuItem4, ResetWindowLayoutMNU });
+      GroupViewPanelMNU.DropDownItems.AddRange(new ToolStripItem[] { GroupViewMNU, SatelliteDetailsMNU, MonitoredSatellitesMNU, TransmittersMNU, SatellitePassesMNU, WaterfallMNU, TimelineMNU, SkyViewMNU, EarthViewMNU, QsoEntryMNU, Ft4ConsoleMNU, RecorderMNU, TelemetryMNU, toolStripMenuItem4, ResetWindowLayoutMNU });
       GroupViewPanelMNU.Name = "GroupViewPanelMNU";
       GroupViewPanelMNU.Size = new Size(44, 20);
       GroupViewPanelMNU.Text = "&View";
@@ -424,6 +425,13 @@
       QsoSchedulerMNU.Size = new Size(188, 22);
       QsoSchedulerMNU.Text = "QSO &Scheduler";
       QsoSchedulerMNU.Click += QsoSchedulerMNU_Click;
+      //
+      // TelemetryMNU
+      //
+      TelemetryMNU.Name = "TelemetryMNU";
+      TelemetryMNU.Size = new Size(188, 22);
+      TelemetryMNU.Text = "Te&lemetry";
+      TelemetryMNU.Click += TelemetryMNU_Click;
       //
       // toolStripMenuItem4
       // 
@@ -942,6 +950,7 @@
     public ToolStripMenuItem Ft4ConsoleMNU;
     public ToolStripMenuItem RecorderMNU;
     public ToolStripMenuItem QsoSchedulerMNU;
+    public ToolStripMenuItem TelemetryMNU;
     public FrequencyWidget FrequencyWidget;
     private Panel SatellitePhotoSeparator;
   }

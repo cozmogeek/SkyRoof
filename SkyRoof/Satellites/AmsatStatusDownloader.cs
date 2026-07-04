@@ -17,37 +17,57 @@ namespace SkyRoof
 
     public readonly Dictionary<int, bool> Statuses = [];
     public Context ctx;
+    private bool busy;
 
     public async Task<bool> GetStatusesAsync()
     {
       if (!ctx.Settings.Amsat.Enabled || ctx.GroupViewPanel == null) return true;
 
-      string html;
-
+      // guard against overlapping runs (startup + hourly tick + menu) interleaving their
+      // mutations of the shared satellite collection
+      if (busy) return true;
+      busy = true;
       try
       {
-        html = await DownloadStatusesAsync();
-      }
-      catch (Exception ex)
-      {
-        Log.Error(ex, "Error downloading AMSAT status");
-        return false;
-      }
+        string html;
+        IDocument document;
 
-      try
-      {
-        ExtractSatLabels(html);
-        ParseAmsatHtml(html);
-      }
-      catch (Exception ex)
-      {
-        Log.Error(ex, "Error parsing AMSAT status");
-        File.WriteAllText(Path.Combine(Utils.GetUserDataFolder(), "Downloads", "amsat_status_error.html"), html);
-        return false;
-      }
+        // do all awaits up front: while suspended here the message pump (incl. a modal dialog)
+        // runs, but no shared state is touched yet
+        try
+        {
+          html = await DownloadStatusesAsync();
+          var config = Configuration.Default.WithDefaultLoader();
+          var browsingContext = BrowsingContext.New(config);
+          document = await browsingContext.OpenAsync(req => req.Content(html));
+        }
+        catch (Exception ex)
+        {
+          Log.Error(ex, "Error downloading AMSAT status");
+          return false;
+        }
 
-      ctx.GroupViewPanel?.ShowAmsatStatuses();
-      return true;
+        // apply synchronously, with no awaits in between, so the message pump cannot interleave
+        // these satellite-collection mutations and the virtual-list update with other UI work
+        try
+        {
+          ExtractSatLabels(html);
+          ParseAmsatHtml(document);
+        }
+        catch (Exception ex)
+        {
+          Log.Error(ex, "Error parsing AMSAT status");
+          File.WriteAllText(Path.Combine(Utils.GetUserDataFolder(), "Downloads", "amsat_status_error.html"), html);
+          return false;
+        }
+
+        ctx.GroupViewPanel?.ShowAmsatStatuses();
+        return true;
+      }
+      finally
+      {
+        busy = false;
+      }
     }
 
     private readonly Regex optionsRx = new Regex(@"(?is)<select\s+name\s*=\s*[""']SatName[""'][^>]*>(?:(?:(?!</select>).)*?\bvalue\s*=\s*[""']([^""']*)[""'])*.*?</select>");
@@ -87,11 +107,8 @@ namespace SkyRoof
       }
     }
 
-    private async void ParseAmsatHtml(string html)
+    private void ParseAmsatHtml(IDocument document)
     {
-      var config = Configuration.Default.WithDefaultLoader();
-      var context = BrowsingContext.New(config);
-      var document = await context.OpenAsync(req => req.Content(html));
       var tables = document.QuerySelectorAll("table");
       var rows = tables[2].QuerySelectorAll("tr");
 

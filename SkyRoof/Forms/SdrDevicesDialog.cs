@@ -96,8 +96,15 @@ namespace SkyRoof
       listBox1.Invalidate();
     }
 
+    private void SdrDevicesDialog_Shown(object? sender, EventArgs e)
+    {
+      ctx.Settings.Ui.RestorePropertyGridLabelWidth("SdrDevicesDialog", Grid);
+    }
+
     private void SdrDevicesDialog_FormClosing(object sender, FormClosingEventArgs e)
     {
+      ctx.Settings.Ui.SavePropertyGridLabelWidth("SdrDevicesDialog", Grid);
+
       if (DialogResult == DialogResult.OK)
       {
         ctx.Settings.Sdr.Devices = Devices;

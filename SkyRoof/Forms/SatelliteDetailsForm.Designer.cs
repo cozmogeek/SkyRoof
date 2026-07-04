@@ -75,6 +75,8 @@
       ShowInTaskbar = false;
       StartPosition = FormStartPosition.CenterParent;
       Text = "Satellite Details";
+      Shown += SatelliteDetailsForm_Shown;
+      FormClosing += SatelliteDetailsForm_FormClosing;
       panel1.ResumeLayout(false);
       ResumeLayout(false);
     }

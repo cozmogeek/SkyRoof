@@ -25,8 +25,9 @@
 
     protected override void OnPaint(PaintEventArgs e)
     {
-      Region iRegion = new Region(e.ClipRectangle);
-      e.Graphics.FillRegion(new SolidBrush(this.BackColor), iRegion);
+      using Region iRegion = new Region(e.ClipRectangle);
+      using var bgBrush = new SolidBrush(BackColor);
+      e.Graphics.FillRegion(bgBrush, iRegion);
 
       if (Items.Count > 0)
       {

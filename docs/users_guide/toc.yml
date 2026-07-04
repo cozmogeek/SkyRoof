@@ -21,6 +21,8 @@ items:
       href: setting_up_audio.md
     - name: Setting Up Output Stream
       href: setting_up_output_stream.md
+    - name: Setting Up Telemetry Decoding
+      href: setting_up_telemetry_decoding.md
     - name: Setting Up Voice Announcements
       href: setting_up_voice_announcements.md
     - name: Setting Up CAT Control
@@ -81,6 +83,8 @@ items:
       href: ft4_console_panel.md
     - name: Recorder
       href: recorder_panel.md
+    - name: Telemetry
+      href: telemetry_panel.md
   - name: How To
     items:
     - name: Decode Telemetry from PEARL-1C

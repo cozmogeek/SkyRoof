@@ -113,6 +113,7 @@ namespace SkyRoof
     private void RecordBtn_Click(object sender, EventArgs e)
     {
       if (recordingManager.IsRecording) StopRecording();
+      else if (ModifierKeys.HasFlag(Keys.Control)) RecordIqMNU_Click(sender, e);
       else RecordAudioMNU_Click(sender, e);
     }
 

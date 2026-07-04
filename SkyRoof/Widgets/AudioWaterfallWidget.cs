@@ -60,7 +60,12 @@ namespace SkyRoof
       WaterfallBmp = new Bitmap(BmpWidth, BMP_HEIGHT, PixelFormat.Format32bppRgb);
 
       SpectrumAnalyzer?.Dispose();
-      SpectrumAnalyzer = new SpectrumAnalyzer<float>(SPECTRUM_SIZE, SdrConst.AUDIO_SAMPLING_RATE / SPECTRA_PER_SECOND, BmpWidth);
+
+      // Show a wait box while the spectrum analyzer is built, since FFTW plan creation
+      // can be slow on first run (before wisdom is cached).
+      WaitBox.Run(() =>
+        SpectrumAnalyzer = new SpectrumAnalyzer<float>(SPECTRUM_SIZE, SdrConst.AUDIO_SAMPLING_RATE / SPECTRA_PER_SECOND, BmpWidth));
+
       SpectrumAnalyzer.SpectrumAvailable += (s, e) => BeginInvoke(() => AppendSpectrum(e));
 
       CanProcess = true;
@@ -255,7 +260,9 @@ namespace SkyRoof
     {
       LeftBmp.SetPixel(0, WriteRow, color);
       LeftBmp.SetPixel(1, WriteRow, color);
-      Graphics.FromImage(WaterfallBmp).DrawLine(new Pen(color), 0, WriteRow, WaterfallBmp.Width, WriteRow);
+      using (var g = Graphics.FromImage(WaterfallBmp))
+      using (var pen = new Pen(color))
+        g.DrawLine(pen, 0, WriteRow, WaterfallBmp.Width, WriteRow);
 
       if (--WriteRow < 0) WriteRow = WaterfallBmp.Height - 1;
     }

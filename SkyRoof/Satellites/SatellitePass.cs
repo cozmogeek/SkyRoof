@@ -178,56 +178,80 @@ namespace SkyRoof
       }
     }
 
-    // currently not used
-    public List<GeoPath> GetCoveragePolygon()
+    // boundary polygon of the area covered by the satellite during this pass, as absolute geo points
+    public List<GeoPoint> GetCoveragePolygon()
     {
       // only for LEO
       if (EndTime - StartTime > TimeSpan.FromHours(2)) return new();
 
+      // sub-satellite points and footprint radii along the pass.
+      // propagate our own geodetic samples; we don't need the topocentric Track here
+      const int steps = 32;
+      var stepTime = (EndTime - StartTime) / steps;
+      var centers = new List<GeoPoint>(steps + 1);
+      var radii = new List<double>(steps + 1); // km
+      for (int i = 0; i <= steps; i++)
+      {
+        var p = Satellite.Tracker.Predict(StartTime + i * stepTime);
+        if (p == null) continue;
+        centers.Add(new GeoPoint(p.Latitude.Degrees, p.Longitude.Degrees));
+        radii.Add(p.GetFootprint());
+      }
+      if (centers.Count < 3) return new();
+
       var leftPoints = new List<GeoPoint>();
       var rightPoints = new List<GeoPoint>();
 
-      var predictions = Track.Select(t => Satellite.Tracker.Predict(t.Utc)).Where(p=>p != null).ToArray();
-      if (predictions.Length < 3) return new List<GeoPath>();
-
-      for (int i = 0; i < predictions.Length; i++)
+      for (int i = 0; i < centers.Count; i++)
       {
-        var prevP = predictions[Math.Max(0, i-1)];
-        var P = predictions[i];
-        var nextP = predictions[Math.Min(predictions.Length-1, i+1)];
+        var G = centers[i];
+        var radius = radii[i];
 
-        var prevG = new GeoPoint(prevP.Latitude.Degrees, prevP.Longitude.Degrees);
-        var G = new GeoPoint(P.Latitude.Degrees, P.Longitude.Degrees);
-        var nextG = new GeoPoint(nextP.Latitude.Degrees, nextP.Longitude.Degrees);
-
+        // local track bearing at G, centered difference
+        var prevG = centers[Math.Max(0, i - 1)];
+        var nextG = centers[Math.Min(centers.Count - 1, i + 1)];
         var azim = (nextG - prevG).Azimuth;
-        var radius = P.GetFootprint();
 
-        var pointL = G + new GeoPath(azim - 90, radius);
-        var pointR = G + new GeoPath(azim + 90, radius);
-
+        // start cap: back semicircle around AOS
         if (i == 0)
-          for (double a = 1; a < 180; a+=1)
+          for (double a = 4; a < 180; a += 4)
             leftPoints.Add(G + new GeoPath(azim + 90 + a, radius));
 
-        leftPoints.Add(pointL);
-        rightPoints.Add(pointR);
+        leftPoints.Add(G + new GeoPath(azim - 90, radius));
+        rightPoints.Add(G + new GeoPath(azim + 90, radius));
 
-        if (i == predictions.Length-1)
-          for (double a = 1; a < 180; a+=1)
+        // end cap: front semicircle around LOS
+        if (i == centers.Count - 1)
+          for (double a = 4; a < 180; a += 4)
             leftPoints.Add(G + new GeoPath(azim - 90 + a, radius));
       }
 
       rightPoints.Reverse();
       leftPoints.AddRange(rightPoints);
-      
-      // close the loop
-      leftPoints.Add(leftPoints[0]);
 
-      // lat/lon to az/dist
-      var homeP = GroundStation.Location.ToGeodetic();
-      var homeG = new GeoPoint(homeP.Latitude.Degrees, homeP.Longitude.Degrees);
-      return leftPoints.Select(g => g - homeG).ToList();
+      // remove inner-offset self-intersections: a vertex that lies strictly inside
+      // any footprint disk is not on the true outer boundary. dropping these clips
+      // the kinks/loops the offset rails produce where the track curves sharply.
+      var boundary = new List<GeoPoint>(leftPoints.Count);
+      foreach (var pt in leftPoints)
+      {
+        bool inside = false;
+        for (int j = 0; j < centers.Count; j++)
+          if ((pt - centers[j]).Distance < radii[j] - 1.0) { inside = true; break; } // 1 km margin keeps tangent points
+        if (!inside) boundary.Add(pt);
+      }
+
+      if (boundary.Count < 3) return new();
+
+      // close the loop
+      boundary.Add(boundary[0]);
+
+      return boundary;
+    }
+
+    internal bool IsAboveHorizon()
+    {
+      return StartTime < DateTime.UtcNow && EndTime > DateTime.UtcNow;
     }
   }
 }

@@ -42,6 +42,26 @@ namespace SkyRoof
     public Dictionary<string, SatelliteCustomization> SatelliteCustomizations = new();
     public Dictionary<string, TransmitterCustomization> TransmitterCustomizations = new();
 
+    // returns the saved customization for the transmitter, or, on first use, creates one with the
+    // down/uplink modes mapped from the SatNOGS mode (mode_id), as if the user had set them manually
+    public TransmitterCustomization GetOrCreateTransmitterCustomization(SatnogsDbTransmitter tx)
+    {
+      if (!TransmitterCustomizations.TryGetValue(tx.uuid, out TransmitterCustomization? cust))
+      {
+        var downlinkMode = ModeMnemonic.ToSlicerMode(tx.mode_id, tx.mode, tx.invert);
+        cust = new TransmitterCustomization
+        {
+          uuid = tx.uuid,
+          DownlinkMode = downlinkMode,
+          UplinkMode = tx.uplink_mode != null
+            ? ModeMnemonic.ToSlicerMode(null, tx.uplink_mode, tx.invert)
+            : downlinkMode
+        };
+        TransmitterCustomizations.Add(tx.uuid, cust);
+      }
+      return cust;
+    }
+
     public List<SatelliteGroup> SatelliteGroups = new();
     public string SelectedGroupId;
     public string SelectedSatelliteId;

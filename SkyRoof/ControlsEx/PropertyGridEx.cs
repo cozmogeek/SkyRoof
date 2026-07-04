@@ -67,6 +67,60 @@ namespace VE3NEA
       return null;
     }
 
+    // the width of the label column (the split position between property names and values) is not
+    // exposed by PropertyGrid, so reach the internal PropertyGridView to read and set it, allowing
+    // the column width to be persisted. works on any PropertyGrid, not only PropertyGridEx.
+    private static Control? FindPropertyGridView(PropertyGrid grid)
+    {
+      foreach (Control control in grid.Controls)
+        if (control.GetType().Name == "PropertyGridView")
+          return control;
+
+      return null;
+    }
+
+    public static int GetLabelWidth(PropertyGrid grid)
+    {
+      var view = FindPropertyGridView(grid);
+      var field = view == null ? null : FindLabelWidthField(view.GetType());
+      if (field == null) return 0;
+
+      return field.GetValue(view) is int width && width > 0 ? width : 0;
+    }
+
+    public static void SetLabelWidth(PropertyGrid grid, int width)
+    {
+      if (width <= 0) return;
+      var view = FindPropertyGridView(grid);
+      if (view == null) return;
+
+      // MoveSplitterTo(x) does the proper relayout; x is the label column width because
+      // the PropertyGridView is docked at the left of the grid (its location.X is 0)
+      var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+      var method = view.GetType().GetMethod("MoveSplitterTo", flags, new[] { typeof(int) });
+      if (method != null) { method.Invoke(view, new object[] { width }); return; }
+
+      // fall back to setting the backing field directly if the method was renamed
+      FindLabelWidthField(view.GetType())?.SetValue(view, width);
+      grid.Refresh();
+    }
+
+    // the label width backing field is named "labelWidth" (older) or "_labelWidth" (current .NET);
+    // match by name ignoring underscores and case, walking up the PropertyGridView type hierarchy
+    private static FieldInfo? FindLabelWidthField(Type viewType)
+    {
+      var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+      for (var type = viewType; type != null; type = type.BaseType)
+      {
+        var field = type.GetFields(flags).FirstOrDefault(f =>
+          f.FieldType == typeof(int) &&
+          f.Name.Replace("_", "").Equals("labelWidth", StringComparison.OrdinalIgnoreCase));
+        if (field != null) return field;
+      }
+
+      return null;
+    }
+
     private GridItem GetRoot()
     {
       GridItem root = SelectedGridItem;
