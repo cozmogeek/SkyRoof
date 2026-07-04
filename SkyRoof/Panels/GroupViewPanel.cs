@@ -255,6 +255,17 @@ namespace SkyRoof
       if (data.Pass != null) ctx.SatelliteSelector.SetSelectedPass(data.Pass);
     }
 
+    private void listView1_MouseDown(object sender, MouseEventArgs e)
+    {
+      if (e.Button != MouseButtons.Right) return;
+
+      var item = listView1.GetItemAt(e.X, e.Y);
+      if (item == null) return;
+
+      listView1.SelectedIndices.Clear();
+      item.Selected = true;
+    }
+
     private void SatelliteDetailsMNU_Click(object sender, EventArgs e)
     {
       // use the sat captured when the menu opened: a timer-driven list rebuild
@@ -265,12 +276,8 @@ namespace SkyRoof
 
     private void MonitorSatelliteMNU_Click(object sender, EventArgs e)
     {
-      if (listView1.SelectedIndices.Count == 0) return;
-      int idx = listView1.SelectedIndices[0];
-      if (Items == null || idx < 0 || idx >= Items.Length) return;
-
-      var data = (ItemData)Items[idx].Tag!;
-      ToggleMonitored(data.Sat);
+      if (ContextMenuSat == null) return;
+      ToggleMonitored(ContextMenuSat);
     }
 
     private void ToggleMonitored(SatnogsDbSatellite sat)
@@ -288,13 +295,15 @@ namespace SkyRoof
 
     private void contextMenuStrip1_Opening(object sender, System.ComponentModel.CancelEventArgs e)
     {
-          
-          if (listView1.SelectedIndices.Count == 0) { e.Cancel = true; ContextMenuSat = null; return; }
+      if (listView1.SelectedIndices.Count == 0)
+      {
+        e.Cancel = true;
+        ContextMenuSat = null;
+        return;
+      }
 
       ContextMenuSat = ((ItemData)Items[listView1.SelectedIndices[0]].Tag!).Sat;
-        if (listView1.SelectedIndices.Count == 0) e.Cancel = true;
-
-        bool monitored = ctx.Settings.Satellites.MonitoredSatelliteIds.Contains(ContextMenuSat.sat_id);
+      bool monitored = ctx.Settings.Satellites.MonitoredSatelliteIds.Contains(ContextMenuSat.sat_id);
       MonitorSatelliteMNU.Text = monitored ? "Unmonitor Satellite" : "Monitor Satellite";
     }
   }

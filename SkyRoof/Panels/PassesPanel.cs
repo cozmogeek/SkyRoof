@@ -14,6 +14,7 @@ namespace SkyRoof
 
     private readonly Font BoldFont;
     private readonly Pen PathPen = new Pen(Brushes.Teal, 2);
+    private SatnogsDbSatellite? ContextMenuSat;
 
 
     public PassesPanel()
@@ -96,21 +97,23 @@ namespace SkyRoof
 
     private void contextMenuStrip1_Opening(object sender, System.ComponentModel.CancelEventArgs e)
     {
-      if (listViewEx1.SelectedIndices.Count == 0) { e.Cancel = true; return; }
+      if (listViewEx1.SelectedIndices.Count == 0)
+      {
+        e.Cancel = true;
+        ContextMenuSat = null;
+        return;
+      }
 
       var pass = (SatellitePass)Items[listViewEx1.SelectedIndices[0]].Tag!;
-      bool monitored = ctx.Settings.Satellites.MonitoredSatelliteIds.Contains(pass.Satellite.sat_id);
+      ContextMenuSat = pass.Satellite;
+      bool monitored = ctx.Settings.Satellites.MonitoredSatelliteIds.Contains(ContextMenuSat.sat_id);
       MonitorSatelliteMNU.Text = monitored ? "Unmonitor Satellite" : "Monitor Satellite";
     }
 
     private void MonitorSatelliteMNU_Click(object sender, EventArgs e)
     {
-      if (listViewEx1.SelectedIndices.Count == 0) return;
-      int idx = listViewEx1.SelectedIndices[0];
-      if (idx < 0 || idx >= Items.Count) return;
-
-      var pass = (SatellitePass)Items[idx].Tag!;
-      ToggleMonitored(pass.Satellite);
+      if (ContextMenuSat == null) return;
+      ToggleMonitored(ContextMenuSat);
     }
 
     private void ToggleMonitored(SatnogsDbSatellite sat)

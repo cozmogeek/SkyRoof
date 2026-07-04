@@ -66,6 +66,7 @@ namespace SkyRoof
       minElSaveTimer.Dispose();
       minElToolTip.Dispose();
       listColumnToolTip.Dispose();
+      ctx.Settings.Ui.SaveColumnWidths("MonitoredSatellitesPanel", listView);
       ctx.MonitoredSatellitesPanel = null;
       ctx.MainForm.MonitoredSatellitesMNU.Checked = false;
       base.OnFormClosing(e);
@@ -160,6 +161,8 @@ namespace SkyRoof
 
       Controls.Add(listView);
       Controls.Add(top);
+
+      ctx.Settings.Ui.RestoreColumnWidths("MonitoredSatellitesPanel", listView);
     }
 
     public void RefreshList()
@@ -211,8 +214,17 @@ namespace SkyRoof
         if (!IsDisposed) nextPassTimer.Start();
       }
 
-      ResizeSatelliteColumn();
+      ResizeSatelliteColumnIfNeeded();
       UpdateNextPassCountdown();
+    }
+
+    private bool HasSavedColumnWidths =>
+      ctx.Settings.Ui.ListViewColumnWidths.ContainsKey("MonitoredSatellitesPanel");
+
+    private void ResizeSatelliteColumnIfNeeded()
+    {
+      if (HasSavedColumnWidths) return;
+      ResizeSatelliteColumn();
     }
 
     private void ResizeSatelliteColumn()

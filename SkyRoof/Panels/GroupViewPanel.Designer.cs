@@ -140,7 +140,6 @@
       Name = "GroupViewPanel";
       Text = "Current Satellite Group";
       FormClosing += GroupViewPanel_FormClosing;
-      MouseClick += GroupViewPanel_MouseClick;
       contextMenuStrip1.ResumeLayout(false);
       ResumeLayout(false);
     }
