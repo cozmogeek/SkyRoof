@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Reflection;
 using Newtonsoft.Json;
 using Serilog;
@@ -68,8 +69,8 @@ namespace SkyRoof
         ["noradID"] = noradId.ToString(),
         ["source"] = user.Call.Trim().ToUpperInvariant(),
         ["locator"] = "longLat",
-        ["longitude"] = $"{Math.Abs(location.Longitude):F4}{(location.Longitude >= 0 ? "E" : "W")}",
-        ["latitude"] = $"{Math.Abs(location.Latitude):F4}{(location.Latitude >= 0 ? "N" : "S")}",
+        ["longitude"] = $"{Math.Abs(location.Longitude).ToString("F4", CultureInfo.InvariantCulture)}{(location.Longitude >= 0 ? "E" : "W")}",
+        ["latitude"] = $"{Math.Abs(location.Latitude).ToString("F4", CultureInfo.InvariantCulture)}{(location.Latitude >= 0 ? "N" : "S")}",
         ["timestamp"] = timestamp.ToString("yyyy-MM-ddTHH:mm:ss.fff") + "Z",
         ["frame"] = frame.Hex,
         ["version"] = Version
