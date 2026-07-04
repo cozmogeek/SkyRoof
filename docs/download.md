@@ -4,7 +4,7 @@
 
 ### Current Version
 
-[SkyRoof v.1.37](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.37/SkyRoofSetup-v.1.37.zip)
+[SkyRoof v.1.38](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.38/SkyRoofSetup-v.1.38.zip)
 
 <br>
 
@@ -16,12 +16,16 @@ See [All Releases](https://github.com/VE3NEA/SkyRoof/releases)
 
 ### Release Notes
 
+#### v.1.38
+
+- frame submission to SatNOGS no longer depends on Windows culture
+
 #### v.1.37
 
-- add diagnostics logging for SatNOGS submission
-- reduce font size in the Telemetry panel
-- save and restore column widths and splitter positions in all panels
-- open the Settings window with sections collapsed
+- added diagnostics logging for SatNOGS submission
+- reduced font size in the Telemetry panel
+- saved and restored column widths and splitter positions in all panels
+- the Settings window now opens with sections collapsed
 
 #### v.1.36
 
