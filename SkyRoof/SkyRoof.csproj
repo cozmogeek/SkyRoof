@@ -235,6 +235,27 @@
     </Reference>
   </ItemGroup>
 
+  <!-- VE3NEA.SkySSTV (the SSTV decoder) is vendored the same way as VE3NEA.SkyTlm: built by the
+       VE3NEA.SkySignals sibling solution, refreshed date-gated when the sibling build is present,
+       otherwise the committed Vendor copy is used as-is. -->
+  <PropertyGroup>
+    <SstvRepoDll>$(MSBuildThisFileDirectory)..\..\VE3NEA.SkySignals\VE3NEA.SkySSTV\bin\x64\$(Configuration)\net10.0-windows\VE3NEA.SkySSTV.dll</SstvRepoDll>
+    <SstvVendorDir>$(MSBuildThisFileDirectory)..\Vendor\VE3NEA.SkySSTV\</SstvVendorDir>
+  </PropertyGroup>
+
+  <Target Name="RefreshVendoredSstv" BeforeTargets="ResolveAssemblyReferences"
+          Condition="Exists('$(SstvRepoDll)')"
+          Inputs="$(SstvRepoDll)" Outputs="$(SstvVendorDir)VE3NEA.SkySSTV.dll">
+    <Copy SourceFiles="$(SstvRepoDll)" DestinationFolder="$(SstvVendorDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="VE3NEA.SkySSTV">
+      <HintPath>$(SstvVendorDir)VE3NEA.SkySSTV.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
   <Target Name="ExcludeRootSystemSpeechFromBuildOutput" AfterTargets="ResolveReferences">
     <ItemGroup>
       <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'System.Speech.dll' and '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' == ''" />
