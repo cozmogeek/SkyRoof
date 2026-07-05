@@ -403,7 +403,7 @@ namespace SkyRoof
           var active = passes.FirstOrDefault(p => p.Satellite == sat && p.StartTime <= now && p.EndTime > now);
           if (active != null)
           {
-            item.SubItems[NextColumnIndex].Text = "Now";
+            item.SubItems[NextColumnIndex].Text = $"Now {Utils.TimespanToString(active.EndTime - now)}";
             item.SubItems[MaxColumnIndex].Text = $"{Math.Round(active.MaxElevation):F0}°";
             continue;
           }
@@ -630,7 +630,7 @@ namespace SkyRoof
     private static int MeasureNextPassColumnWidth(Control control)
     {
       int headerWidth = MeasureColumnHeaderWidth(control, "Next Pass");
-      int sampleWidth = TextRenderer.MeasureText("23h 59m 59s", control.Font).Width + 16;
+      int sampleWidth = TextRenderer.MeasureText("Now 23h 59m 59s", control.Font).Width + 16;
       return Math.Max(headerWidth, sampleWidth);
     }
 
