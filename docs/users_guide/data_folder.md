@@ -23,6 +23,10 @@ SkyRoof keeps all of its data in the **data folder**.
 
 - **Satellites.json** - the satellite database compiled from the downloaded data;
 
+- **transmitters-override.json** - hand-curated corrections to the transmitter
+    [signal parameters](satellite_data.md#signal-parameters). Ships with a default set that SkyRoof
+    keeps up to date; mark an entry `"read_only": true` to protect your own edits;
+
 - **cat_info.json** - lists the CAT capabilities of a generic simplex radio;
 
 - **wsjtx_wisdom.dat** - optimal FFT transform settings found by automatic testing.

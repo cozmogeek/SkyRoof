@@ -10,8 +10,8 @@ SkyRoof obtains satellite date from several sources:
 - [JE9PEL Satellite List](https://www.ne.jp/asahi/hamradio/je9pel/satslist.htm) is another
     dataset with information about the satellites, maintained by Mineo Wakita JE9PEL, that,
     in particular,
-    includes the callsigns of the satellites. This dataset presents the frequencies in an
-    undocumented format, so its data are included in the SkyRoof database only FYI.
+    includes the callsigns of the satellites. SkyRoof also mines the JE9PEL mode descriptions to
+    fill in the [signal parameters](#signal-parameters) that SatNOGS leaves blank.
 
 - [LoTW](https://www.arrl.org/quick-start) - The ARRL LoTW service accepts satellite QSO
     only if the satellite abbreviation is one of those published on their
@@ -23,6 +23,43 @@ SkyRoof obtains satellite date from several sources:
 - [AMSAT Live OSCAR Satellite Status Page](https://www.amsat.org/status/) accepts satellite
     observations with their own satellite abbreviations, these abbreviations are stored in a file in the
     [Data folder](data_folder.md).
+
+## Signal Parameters
+
+To decode a satellite's telemetry, SkyRoof needs the **modulation**, **baud rate**, and **framing**
+of its downlink. These are resolved for each transmitter from several sources, in order of priority:
+
+1. your manual overrides (see below);
+2. the [gr-satellites](https://github.com/daniestevez/gr-satellites) database;
+3. the **JE9PEL** satellite list;
+4. the **SatNOGS DB** transmitter description.
+
+The first source that specifies a given parameter wins, so a higher-priority source fills in only what
+the lower-priority ones leave unknown. The resolved values appear in the mouse tooltip of the
+transmitter on the [Frequency Scale](frequency_scale.md).
+
+### Overriding Signal Parameters
+
+When the automatic sources are wrong or incomplete, you can correct them in the
+**transmitters-override.json** file in the [Data folder](data_folder.md). Each entry is keyed by the
+transmitter UUID and lists only the fields to change, for example:
+
+```json
+{
+  "FdxJrwmqFrJnP3sd96Bip8": {
+    "satellite": "SITRO-AIS-56", "norad": 59778,
+    "modulation": "GMSK", "baudrate": 2400, "framing": "USP"
+  }
+}
+```
+
+SkyRoof ships a default copy of this file and refreshes it as new corrections are published. To keep
+your own edits from being overwritten, add `"read_only": true` to the entry — SkyRoof then never
+replaces it. Entries you add that are not in the shipped file are always kept.
+
+The telemetry definition files in the **TelemetryRegistry** folder work the same way: add
+`"readOnly": true` (camelCase, to match those files' key style) to a definition to keep your edits when
+SkyRoof updates its bundled definitions.
 
 ## TLE
 

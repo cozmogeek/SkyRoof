@@ -38,6 +38,9 @@ namespace SkyRoof
     // Enrichment from the gr-satellites satyaml DB, matched by NORAD + nearest baud.
     public GrSatsInfo? gr_sats { get; set; }
 
+    // Authoritative hand-curated correction from transmitters-override.json (the top resolution layer).
+    public GrSatsInfo? manual { get; set; }
+
 
     internal SatnogsDbSatellite Satellite;
     internal long DownlinkLow => (long)downlink_low!;
@@ -60,30 +63,40 @@ namespace SkyRoof
       AddLine(sb, "Downlink", FormatFrequencyRange(downlink_low, downlink_high, invert));
       if (downlink_drift != null) AddLine(sb, "Downlink drift", $"{downlink_drift} Hz");
       AddLine(sb, "Mode", mode);
-      AddLine(sb, "Downlink mode", DownlinkMode);
+      AddLine(sb, "Mode_id", DownlinkMode);
       if (baud != null && baud != 0) AddLine(sb, "Baud", $"{baud} Bd");
       if (uplink_low != null) AddLine(sb, "Inverted", invert ? "yes" : "no");
       AddLine(sb, "Service", service);
       AddLine(sb, "Updated", updated.ToString("yyyy-MM-dd"));
 
-      // gr-satellites satyaml enrichment, merged with any local transmitters-override.json values
-      if (gr_sats != null)
-      {
-        sb.Append("satyaml\n");
-        AddLine(sb, "Modulation", gr_sats.modulation);
-        if (gr_sats.baudrate != null) AddLine(sb, "Baudrate", $"{gr_sats.baudrate} Bd");
-        if (gr_sats.deviation != null) AddLine(sb, "Deviation", $"{gr_sats.deviation} Hz");
-        AddLine(sb, "Framing", gr_sats.framing);
-        AddLine(sb, "Precoding", gr_sats.precoding);
-        AddLine(sb, "RS basis", gr_sats.rs_basis);
-        if (gr_sats.frame_size != null) AddLine(sb, "Frame size", gr_sats.frame_size.ToString());
-        AddLine(sb, "Convolutional", gr_sats.convolutional);
-        if (gr_sats.rs_interleaving != null) AddLine(sb, "RS interleaving", gr_sats.rs_interleaving.ToString());
-        AddLine(sb, "Scrambler", gr_sats.scrambler);
-        AddLine(sb, "Telemetry", gr_sats.telemetry);
-      }
+      // JE9PEL mode text mined for this downlink (a resolution layer below satyaml)
+      AppendGrSatsInfo(sb, "je9pel", Satellites.Je9pelParser.BuildJe9pelLayer(this));
+
+      // gr-satellites satyaml enrichment
+      AppendGrSatsInfo(sb, "satyaml", gr_sats);
+
+      // authoritative hand-curated override from transmitters-override.json (the top resolution layer)
+      AppendGrSatsInfo(sb, "manual", manual);
 
       return sb.ToString().TrimEnd();
+    }
+
+    // append a headed block of the non-empty fields of a GrSatsInfo resolution layer to the tooltip
+    private static void AppendGrSatsInfo(StringBuilder sb, string header, GrSatsInfo? info)
+    {
+      if (info == null) return;
+      sb.Append($"{header}\n");
+      AddLine(sb, "Modulation", info.modulation);
+      if (info.baudrate != null) AddLine(sb, "Baudrate", $"{info.baudrate} Bd");
+      if (info.deviation != null) AddLine(sb, "Deviation", $"{info.deviation} Hz");
+      AddLine(sb, "Framing", info.framing);
+      AddLine(sb, "Precoding", info.precoding);
+      AddLine(sb, "RS basis", info.rs_basis);
+      if (info.frame_size != null) AddLine(sb, "Frame size", info.frame_size.ToString());
+      AddLine(sb, "Convolutional", info.convolutional);
+      if (info.rs_interleaving != null) AddLine(sb, "RS interleaving", info.rs_interleaving.ToString());
+      AddLine(sb, "Scrambler", info.scrambler);
+      AddLine(sb, "Telemetry", info.telemetry);
     }
 
     // append an indented "  name: value" line to the tooltip when the value is non-empty

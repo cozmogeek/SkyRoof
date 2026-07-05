@@ -10,19 +10,23 @@ namespace SkyRoof.Satellites
     public static SignalParams? Resolve(SatnogsDbTransmitter tx)
     {
       if (tx == null) return null;
-      var grSats = tx.gr_sats;
+
+      // Ordered resolution layers, highest priority first. Each layer is a partial GrSatsInfo. manual (the
+      // override file) is authoritative; je9pel (mined from the JE9PEL Mode text) fills gaps below the curated
+      // satyaml layer; satnogs is the base DB. The value fields below take the first layer that supplies a
+      // non-null value (Field); modulation and framing instead give manual priority and then classify the
+      // remaining sources as a single string (see ResolveModulation/ResolveFraming).
+      var je9pel = Je9pelParser.BuildJe9pelLayer(tx);
+      var layers = new List<GrSatsInfo?> { tx.manual, tx.gr_sats, je9pel, BuildSatnogsLayer(tx) };
 
       // Baud: prefer the curated satyaml baudrate, then the SatNOGS DB field,
       // then a token parsed from the description (e.g. "GMSK 9k6")
-      double baud = grSats?.baudrate ?? tx.baud ?? ParseBaud(tx.description) ?? 0;
+      double baud = Field(layers, l => l.baudrate) ?? 0;
 
-      string modeString = $"{grSats?.modulation} {tx.description} {tx.mode} {tx.DownlinkMode}";
-      Modulation mod = ExtractyModulation(modeString);
+      Modulation mod = ResolveModulation(tx, je9pel);
+      Framing framing = ResolveFraming(tx, je9pel);
 
-      string framingString = $"{grSats?.framing} {tx.description} {tx.mode} {tx.DownlinkMode}";
-      Framing framing = ExtractFraming(framingString);
-
-      double? devOverride = mod == Modulation.GMSK ? null : grSats?.deviation;
+      double? devOverride = mod == Modulation.GMSK ? null : Field(layers, l => l.deviation);
 
       // Differential (PSK only): taken from the satyaml precoding — unlike the DB's unreliable
       // BPSK/DBPSK labels, satyaml states it explicitly (e.g. ASRTU-1 "precoding: differential").
@@ -30,36 +34,101 @@ namespace SkyRoof.Satellites
       // so we resolve coherent unless precoding explicitly says "differential".
       bool? differential = null;
       if (mod == Modulation.BPSK || mod == Modulation.QPSK)
-        differential = grSats?.precoding is string pc && pc.Contains("differential", StringComparison.OrdinalIgnoreCase);
+      {
+        string? precoding = Field(layers, l => l.precoding);
+        differential = precoding != null && precoding.Contains("differential", StringComparison.OrdinalIgnoreCase);
+      }
 
       var sp = new SignalParams(baud, mod, framing, AudioSampleRate, devOverride)
       {
-        Manchester = IsManchester(grSats?.modulation, tx.description),
+        Manchester = IsManchester(tx.manual?.modulation, tx.gr_sats?.modulation, tx.description),
         Differential = differential,
-        RsBasis = grSats?.rs_basis,
-        FrameSize = grSats?.frame_size
+        RsBasis = Field(layers, l => l.rs_basis),
+        FrameSize = Field(layers, l => l.frame_size)
       };
-      return framing == Framing.CCSDS ? ApplyCcsdsOptions(sp, grSats) : sp;
+      // CCSDS carry-through facts (block variant, scrambler, precoding, convolutional, interleaving) are a
+      // satyaml concept expressed as structured fields, so they resolve over the structured layers only —
+      // manual over gr_sats. The base satnogs/je9pel layers store only raw DB text and must never be scanned
+      // for these tokens, so they are excluded here. With no manual override present this is byte-identical
+      // to reading gr_sats alone (the P1 safety property).
+      return framing == Framing.CCSDS
+        ? ApplyCcsdsOptions(sp, new List<GrSatsInfo?> { tx.manual, tx.gr_sats })
+        : sp;
+    }
+
+
+    // Wrap today's SatNOGS DB fields into a GrSatsInfo so the base case is just "the lowest layer",
+    // keeping Resolve a single uniform loop. The DB carries no deviation/precoding/RS, so those stay null.
+    // modulation/framing hold the raw DB free text (not a pre-classified enum name): the field resolver
+    // runs the shared extractors on every layer uniformly, and keeping the raw text avoids a lossy enum
+    // round-trip (e.g. ExtractFraming("AX100RS") would collapse to AX100ASM).
+    private static GrSatsInfo BuildSatnogsLayer(SatnogsDbTransmitter tx)
+    {
+      string freeText = $"{tx.description} {tx.mode} {tx.DownlinkMode}";
+      return new GrSatsInfo
+      {
+        baudrate = (double?)tx.baud ?? ParseBaud(tx.description),
+        modulation = freeText,
+        framing = freeText
+      };
+    }
+
+    // first non-null value of a value-type field across the layers (null layers skipped)
+    private static T? Field<T>(IEnumerable<GrSatsInfo?> layers, Func<GrSatsInfo, T?> selector) where T : struct
+    {
+      foreach (var layer in layers)
+        if (layer != null && selector(layer) is T value) return value;
+      return null;
+    }
+
+    // first non-null value of a reference-type field across the layers (null layers skipped)
+    private static string? Field(IEnumerable<GrSatsInfo?> layers, Func<GrSatsInfo, string?> selector)
+    {
+      foreach (var layer in layers)
+        if (layer != null && selector(layer) is string value) return value;
+      return null;
+    }
+
+    // Modulation: the manual override is authoritative; below it, gr_sats + je9pel + the DB free text are
+    // classified as ONE combined string so ExtractyModulation's specificity order (GMSK/GFSK before the
+    // generic FSK they contain) wins across sources — a generic gr_sats "FSK" must not shadow a DB "GMSK".
+    private static Modulation ResolveModulation(SatnogsDbTransmitter tx, GrSatsInfo? je9pel)
+    {
+      Modulation manual = ExtractyModulation(tx.manual?.modulation);
+      if (manual != Modulation.Unknown) return manual;
+      string modeString = $"{tx.gr_sats?.modulation} {je9pel?.modulation} {tx.description} {tx.mode} {tx.DownlinkMode}";
+      return ExtractyModulation(modeString);
+    }
+
+    // Framing: same discipline as modulation — manual wins, otherwise one combined string over gr_sats +
+    // je9pel + the DB free text, classified by ExtractFraming's fixed keyword order.
+    private static Framing ResolveFraming(SatnogsDbTransmitter tx, GrSatsInfo? je9pel)
+    {
+      Framing manual = ExtractFraming(tx.manual?.framing);
+      if (manual != Framing.Unknown) return manual;
+      string framingString = $"{tx.gr_sats?.framing} {je9pel?.framing} {tx.description} {tx.mode} {tx.DownlinkMode}";
+      return ExtractFraming(framingString);
     }
 
 
     /// <summary>Apply CCSDS-specific carry-through facts (block variant + satyaml overrides) to the
-    /// already-classified <see cref="SignalParams"/>. Mirrors <c>ParamResolver.ApplyCcsdsOptions</c>.</summary>
-    private static SignalParams ApplyCcsdsOptions(SignalParams signalParams, GrSatsInfo? grSatsInfo)
+    /// already-classified <see cref="SignalParams"/>, resolving each fact first-non-null over the structured
+    /// layers (manual over gr_sats). Mirrors <c>ParamResolver.ApplyCcsdsOptions</c>.</summary>
+    private static SignalParams ApplyCcsdsOptions(SignalParams signalParams, IEnumerable<GrSatsInfo?> structuredLayers)
     {
-      string framingText = grSatsInfo?.framing ?? "";
+      string framingText = Field(structuredLayers, l => l.framing) ?? "";
       bool uncoded = framingText.Contains("Uncoded", StringComparison.OrdinalIgnoreCase);
       bool concatenated = framingText.Contains("Concatenated", StringComparison.OrdinalIgnoreCase);
-      bool? scrambler = grSatsInfo?.scrambler is string sc ? 
+      bool? scrambler = Field(structuredLayers, l => l.scrambler) is string sc ?
         !sc.Equals("none", StringComparison.OrdinalIgnoreCase) : null;
-      bool? precoding = grSatsInfo?.precoding is string pc ? 
+      bool? precoding = Field(structuredLayers, l => l.precoding) is string pc ?
         pc.Contains("differential", StringComparison.OrdinalIgnoreCase) : null;
 
       return signalParams with
       {
         RsEnabled = !uncoded,
-        Convolutional = concatenated ? grSatsInfo?.convolutional ?? "CCSDS" : null,
-        RsInterleaving = grSatsInfo?.rs_interleaving,
+        Convolutional = concatenated ? Field(structuredLayers, l => l.convolutional) ?? "CCSDS" : null,
+        RsInterleaving = Field(structuredLayers, l => l.rs_interleaving),
         Scrambler = scrambler,
         Differential = precoding ?? signalParams.Differential
       };

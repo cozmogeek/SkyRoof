@@ -56,7 +56,11 @@
   "fDywUVLPJc2FMkFoYv7EeV": {
     "satellite": "SNIPE B",
     "norad": 56745,
-    "deviation": 2400,
-    "note": "deviation 2400 Hz (not in SatNOGS DB)"
+    "deviation": 2400
+  },
+  "2KinLbk46zccaYCdUY4Lqr": {
+    "satellite": "CUBEBUG-2",
+    "norad": 39440,
+    "deviation": 1200
   }
 }
