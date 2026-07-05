@@ -134,7 +134,7 @@ namespace SkyRoof
 
     protected override IEnumerable<SatnogsDbSatellite> ListSatellites()
     {
-      var ids = ctx.Settings.Satellites.MonitoredSatelliteIds;
+      var ids = ctx.MonitoredSatellites.GetSatelliteIds();
       if (ids == null || ids.Count == 0) return Array.Empty<SatnogsDbSatellite>();
       return ids.Select(id => ctx.SatnogsDb.GetSatellite(id)).Where(s => s != null)!;
     }

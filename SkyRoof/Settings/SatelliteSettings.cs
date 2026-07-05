@@ -67,9 +67,11 @@ namespace SkyRoof
     public string SelectedSatelliteId;
 
     /// <summary>
-    /// satellite IDs selected for monitoring, ordered by priority (index 0 = highest).
+    /// Legacy; migrated to MonitoredSatellites.json. Not written on save.
     /// </summary>
     public List<string> MonitoredSatelliteIds = new();
+
+    public bool ShouldSerializeMonitoredSatelliteIds() => false;
 
     /// <summary>
     /// when enabled, SkyRoof automatically selects the highest-priority monitored satellite
@@ -88,8 +90,6 @@ namespace SkyRoof
       // remove deleted sats
       foreach (var group in SatelliteGroups)
         group.SatelliteIds.RemoveAll(id => db.GetSatellite(id)?.Tle == null);
-
-      MonitoredSatelliteIds.RemoveAll(id => db.GetSatellite(id) == null);
 
       if (!string.IsNullOrEmpty(SelectedSatelliteId) && db.GetSatellite(SelectedSatelliteId) == null)
         SelectedSatelliteId = null;
@@ -138,8 +138,7 @@ namespace SkyRoof
         SelectedSatelliteId = SatelliteGroups.FirstOrDefault(g => g.SatelliteIds.Count > 0)?.SelectedSatId;
       }
 
-      // remove monitored sats not present in any data (will be pruned later when db is available)
-      MonitoredSatelliteIds = MonitoredSatelliteIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+      // remove monitored sats not present in any data (handled by MonitoredSatellitesStore.Sanitize)
 
       AutoMonitorMinElevationDeg = Math.Max(0, Math.Min(90, AutoMonitorMinElevationDeg));
 

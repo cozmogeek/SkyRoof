@@ -12,6 +12,7 @@ namespace SkyRoof
 
     // data
     public Settings Settings = new();
+    public MonitoredSatellitesStore MonitoredSatellites = new();
     public SatnogsDb SatnogsDb;
     public GroupSatellitePasses GroupPasses;
     public HamSatellitePasses HamPasses;

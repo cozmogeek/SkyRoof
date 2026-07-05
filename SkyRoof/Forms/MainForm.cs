@@ -42,6 +42,7 @@ namespace SkyRoof
       ctx.UdpStreamSender.ctx = ctx;
 
       ctx.Settings.LoadFromFile();
+      ctx.MonitoredSatellites.LoadFromFile(ctx.Settings);
 
       EnsureUserDetails();
 
@@ -104,7 +105,7 @@ namespace SkyRoof
         return;
       }
 
-      if (enabled && ctx.Settings.Satellites.MonitoredSatelliteIds.Count == 0)
+      if (enabled && ctx.MonitoredSatellites.GetSatelliteIds().Count == 0)
       {
         MessageBox.Show(
           "Add at least one satellite to the Monitored Satellites list before enabling Auto Tuning.",
@@ -118,6 +119,12 @@ namespace SkyRoof
       ctx.Settings.Satellites.AutoMonitorEnabled = enabled;
       ctx.Settings.SaveToFile();
       if (!enabled) ctx.AutoRecorder?.Stop();
+      else
+      {
+        LastAutoSelectedMonitoredSatId = null;
+        LastAutoSelectTimeUtc = DateTime.MinValue;
+        AutoSelectMonitoredSatelliteForActivePass();
+      }
       UpdateAutoMonitorBannerVisibility();
     }
 
@@ -666,6 +673,7 @@ namespace SkyRoof
 
       if (rc != DialogResult.OK) return;
       ctx.Settings.Satellites.DeleteInvalidData(ctx.SatnogsDb);
+      ctx.MonitoredSatellites.Sanitize(ctx.SatnogsDb);
       SatelliteSelecionWidget.LoadSatelliteGroups();
     }
 
@@ -1127,8 +1135,8 @@ namespace SkyRoof
       var sat = ctx.SatelliteSelector.SelectedSatellite;
       if (sat == null) { ctx.AutoRecorder.Stop(); return; }
 
-      var cust = ctx.Settings.Satellites.SatelliteCustomizations.GetOrCreate(sat.sat_id);
-      if (cust.AutoRecordMode == AutoRecordMode.Off) { ctx.AutoRecorder.Stop(); return; }
+      var entry = ctx.MonitoredSatellites.FindEntry(sat.sat_id);
+      if (entry == null || entry.AutoRecordMode == AutoRecordMode.Off) { ctx.AutoRecorder.Stop(); return; }
 
       var now = DateTime.UtcNow;
       var activePass = ctx.MonitoredPasses.GetPassesSnapshot()
@@ -1136,7 +1144,7 @@ namespace SkyRoof
       if (activePass == null) { ctx.AutoRecorder.Stop(); return; }
 
       int maxElDeg = (int)Math.Round(activePass.MaxElevation);
-      ctx.AutoRecorder.EnsureRecording(sat.sat_id, sat.name, maxElDeg, cust.AutoRecordMode);
+      ctx.AutoRecorder.EnsureRecording(sat.sat_id, sat.name, maxElDeg, entry.AutoRecordMode);
     }
     private async Task OneMinuteTick()
     {
@@ -1173,6 +1181,7 @@ namespace SkyRoof
 
       ctx.SatnogsDb.Customize(ctx.Settings.Satellites.SatelliteCustomizations);
       ctx.Settings.Satellites.DeleteInvalidData(ctx.SatnogsDb);
+      ctx.MonitoredSatellites.Sanitize(ctx.SatnogsDb);
 
       SatelliteSelecionWidget.LoadSatelliteGroups();
       SatellitePhotoWidget.SetSatellite(ctx.SatelliteSelector.SelectedSatellite);
@@ -1217,6 +1226,7 @@ namespace SkyRoof
     private void SatnogsDb_TleUpdated(object? sender, EventArgs e)
     {
       ctx.Settings.Satellites.LastTleTime = DateTime.UtcNow;
+      ctx.MonitoredSatellites.Sanitize(ctx.SatnogsDb);
       ShowSatDataStatus();
 
       ctx.HamPasses.Rebuild();
@@ -1262,6 +1272,9 @@ namespace SkyRoof
       ctx.QsoEntryPanel?.SetBand();
       ctx.QsoEntryPanel?.SetMode();
       ctx.RecorderPanel?.RememberRecordingEvents();
+      var sat = ctx.SatelliteSelector.SelectedSatellite;
+      if (sat != null)
+        ctx.MonitoredSatellites.SyncTransmitterFromSelector(ctx, sat.sat_id);
       ctx.MonitoredSatellitesPanel?.RefreshList();
       ctx.TelemetryPanel?.SetTransmitter();
     }
@@ -1285,8 +1298,8 @@ namespace SkyRoof
       if (ctx.SatnogsDb == null || ctx.MonitoredPasses == null) return;
       if (!ctx.Settings.Satellites.AutoMonitorEnabled) return;
 
-      var ids = ctx.Settings.Satellites.MonitoredSatelliteIds;
-      if (ids == null || ids.Count == 0) return;
+      var ids = ctx.MonitoredSatellites.GetSatelliteIds();
+      if (ids.Count == 0) return;
 
       var now = DateTime.UtcNow;
       if (now - LastAutoSelectTimeUtc < AutoSelectMinInterval) return;
@@ -1314,19 +1327,26 @@ namespace SkyRoof
       if (string.IsNullOrEmpty(chosenId)) return;
 
       if (chosenId == LastAutoSelectedMonitoredSatId && ctx.SatelliteSelector.SelectedSatellite?.sat_id == chosenId)
+      {
+        ctx.MonitoredSatellites.ApplyMonitoredTransmitterForSelectedSat(ctx);
         return;
+      }
 
       var currentId = ctx.SatelliteSelector.SelectedSatellite?.sat_id;
       if (!string.IsNullOrEmpty(currentId) && activeById.ContainsKey(currentId))
       {
-        int curIdx = ids.IndexOf(currentId);
-        int chosenIdx = ids.IndexOf(chosenId);
+        int curIdx = ids.ToList().IndexOf(currentId);
+        int chosenIdx = ids.ToList().IndexOf(chosenId);
         if (curIdx >= 0 && chosenIdx >= 0 && curIdx <= chosenIdx)
         {
           // if we're currently on a higher/equal priority sat, keep it unless it fails the min elevation
           // and another active pass meets the threshold.
           bool currentMeets = activeById[currentId].MaxElevation >= minEl;
-          if (!anyMeets || currentMeets) return;
+          if (!anyMeets || currentMeets)
+          {
+            ctx.MonitoredSatellites.ApplyMonitoredTransmitterForSelectedSat(ctx);
+            return;
+          }
         }
       }
 
@@ -1336,7 +1356,11 @@ namespace SkyRoof
       LastAutoSelectedMonitoredSatId = chosenId;
       LastAutoSelectTimeUtc = now;
 
-      ctx.SatelliteSelector.SetSelectedSatellite(sat);
+      var entry = ctx.MonitoredSatellites.FindEntry(chosenId);
+      if (entry != null)
+        ctx.MonitoredSatellites.ApplyEntryToSelector(ctx, entry);
+      else
+        ctx.SatelliteSelector.SetSelectedSatellite(sat);
       ctx.SatelliteSelector.SetSelectedPass(activeById[chosenId]);
     }
 

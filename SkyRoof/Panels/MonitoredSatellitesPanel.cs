@@ -7,6 +7,10 @@ namespace SkyRoof
   public class MonitoredSatellitesPanel : DockContent
   {
     private readonly Context ctx;
+    private readonly ComboBox presetComboBox = new();
+    private readonly Button newListBtn = new();
+    private readonly Button renameListBtn = new();
+    private readonly Button copyListBtn = new();
     private readonly ListView listView = new();
     private readonly Button upBtn = new();
     private readonly Button downBtn = new();
@@ -20,6 +24,7 @@ namespace SkyRoof
     private readonly System.Windows.Forms.Timer minElSaveTimer = new() { Interval = 400 };
     private int? DragSourceIndex;
     private bool refreshingList;
+    private bool refreshingPresets;
 
     private const string MinElevationToolTip =
       "The minimum elevation required for a higher priority satellite to interrupt a lower priority one during a pass.";
@@ -74,6 +79,48 @@ namespace SkyRoof
 
     private void BuildUi()
     {
+      var presetBar = new FlowLayoutPanel
+      {
+        Dock = DockStyle.Top,
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        WrapContents = false,
+        FlowDirection = FlowDirection.LeftToRight,
+        Padding = new Padding(8, 6, 8, 6),
+      };
+
+      var presetButtons = new FlowLayoutPanel
+      {
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        WrapContents = false,
+        FlowDirection = FlowDirection.LeftToRight,
+        Margin = new Padding(0),
+      };
+
+      ConfigureGlyphButton(newListBtn, "\uE710", "New list", minElToolTip);
+      newListBtn.Click += NewListBtn_Click;
+      presetButtons.Controls.Add(newListBtn);
+
+      ConfigureGlyphButton(renameListBtn, "\uE8AC", "Rename list", minElToolTip);
+      renameListBtn.Click += RenameListBtn_Click;
+      presetButtons.Controls.Add(renameListBtn);
+
+      ConfigureGlyphButton(copyListBtn, "\uE8C8", "Copy list", minElToolTip);
+      copyListBtn.Click += CopyListBtn_Click;
+      presetButtons.Controls.Add(copyListBtn);
+
+      presetComboBox.Width = 160;
+      presetComboBox.Height = 28;
+      presetComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+      presetComboBox.FormattingEnabled = true;
+      presetComboBox.DisplayMember = "Name";
+      presetComboBox.Margin = new Padding(0, 0, 6, 0);
+      presetComboBox.SelectedIndexChanged += PresetComboBox_SelectedIndexChanged;
+
+      presetBar.Controls.Add(presetComboBox);
+      presetBar.Controls.Add(presetButtons);
+
       var top = new FlowLayoutPanel
       {
         Dock = DockStyle.Top,
@@ -161,8 +208,79 @@ namespace SkyRoof
 
       Controls.Add(listView);
       Controls.Add(top);
+      Controls.Add(presetBar);
 
+      RefreshPresetList();
       ctx.Settings.Ui.RestoreColumnWidths("MonitoredSatellitesPanel", listView);
+    }
+
+    private void RefreshPresetList()
+    {
+      refreshingPresets = true;
+      try
+      {
+        string? selectedId = ctx.MonitoredSatellites.CurrentList?.Id;
+        presetComboBox.Items.Clear();
+        foreach (var list in ctx.MonitoredSatellites.Lists)
+          presetComboBox.Items.Add(list);
+
+        int idx = ctx.MonitoredSatellites.Lists.FindIndex(l => l.Id == selectedId);
+        presetComboBox.SelectedIndex = idx >= 0 ? idx : 0;
+      }
+      finally
+      {
+        refreshingPresets = false;
+      }
+    }
+
+    private void PresetComboBox_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+      if (refreshingPresets) return;
+      if (presetComboBox.SelectedItem is not MonitoredSatelliteList list) return;
+      if (list.Id == ctx.MonitoredSatellites.SelectedListId) return;
+
+      ctx.MonitoredSatellites.SelectList(list.Id);
+      ctx.MonitoredPasses?.FullRebuild();
+      RefreshList();
+      ctx.MonitoredSatellites.ApplyMonitoredTransmitterForSelectedSat(ctx);
+    }
+
+    private void NewListBtn_Click(object? sender, EventArgs e)
+    {
+      string? name = TextInputForm.PromptForText(this, "New Monitored List", "List name:", "New List");
+      if (string.IsNullOrWhiteSpace(name)) return;
+
+      ctx.MonitoredSatellites.CreateList(name);
+      ctx.MonitoredPasses?.FullRebuild();
+      RefreshPresetList();
+      RefreshList();
+    }
+
+    private void CopyListBtn_Click(object? sender, EventArgs e)
+    {
+      var source = ctx.MonitoredSatellites.CurrentList;
+      if (source == null) return;
+
+      string? name = TextInputForm.PromptForText(this, "Copy Monitored List", "New list name:", $"{source.Name} copy");
+      if (string.IsNullOrWhiteSpace(name)) return;
+
+      ctx.MonitoredSatellites.CloneList(source, name);
+      ctx.MonitoredPasses?.FullRebuild();
+      RefreshPresetList();
+      RefreshList();
+    }
+
+    private void RenameListBtn_Click(object? sender, EventArgs e)
+    {
+      var list = ctx.MonitoredSatellites.CurrentList;
+      if (list == null) return;
+
+      string? name = TextInputForm.PromptForText(this, "Rename Monitored List", "List name:", list.Name);
+      if (string.IsNullOrWhiteSpace(name)) return;
+      if (name.Trim() == list.Name) return;
+
+      ctx.MonitoredSatellites.RenameList(list, name);
+      RefreshPresetList();
     }
 
     public void RefreshList()
@@ -179,31 +297,28 @@ namespace SkyRoof
         if (ctx.SatnogsDb == null)
           return;
 
-        var ids = ctx.Settings.Satellites.MonitoredSatelliteIds
-          .Where(id => !string.IsNullOrWhiteSpace(id))
-          .Distinct()
-          .ToArray();
+        var entries = ctx.MonitoredSatellites.CurrentEntries;
 
-        for (int i = 0; i < ids.Length; i++)
+        for (int i = 0; i < entries.Count; i++)
         {
-          var sat = ctx.SatnogsDb?.GetSatellite(ids[i]);
+          var entry = entries[i];
+          var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
           if (sat == null) continue;
 
-          var cust = ctx.Settings.Satellites.SatelliteCustomizations.GetOrCreate(sat.sat_id);
           string txName = "";
-          if (!string.IsNullOrEmpty(cust.SelectedTransmitterId))
+          if (!string.IsNullOrEmpty(entry.TransmitterId))
           {
-            var tx = sat.Transmitters.FirstOrDefault(t => t.uuid == cust.SelectedTransmitterId);
+            var tx = sat.Transmitters.FirstOrDefault(t => t.uuid == entry.TransmitterId);
             txName = tx?.description ?? "";
           }
           if (string.IsNullOrEmpty(txName) && sat.Transmitters.Count > 0)
             txName = sat.Transmitters[0].description;
 
-          string audio = cust.AutoRecordMode == AutoRecordMode.Audio ? "☑" : "☐";
-          string iq = cust.AutoRecordMode == AutoRecordMode.Iq ? "☑" : "☐";
+          string audio = entry.AutoRecordMode == AutoRecordMode.Audio ? "☑" : "☐";
+          string iq = entry.AutoRecordMode == AutoRecordMode.Iq ? "☑" : "☐";
 
           var item = new ListViewItem([(i + 1).ToString(), sat.name, txName, "", "", audio, iq]);
-          item.Tag = sat;
+          item.Tag = entry;
           listView.Items.Add(item);
         }
       }
@@ -246,8 +361,9 @@ namespace SkyRoof
       {
         foreach (ListViewItem item in listView.Items)
         {
-          if (item.Tag is not SatnogsDbSatellite sat) continue;
-          if (item.SubItems.Count <= IqColumnIndex) continue;
+          if (item.Tag is not MonitoredSatelliteEntry entry) continue;
+          var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
+          if (sat == null || item.SubItems.Count <= IqColumnIndex) continue;
 
           var active = passes.FirstOrDefault(p => p.Satellite == sat && p.StartTime <= now && p.EndTime > now);
           if (active != null)
@@ -316,43 +432,39 @@ namespace SkyRoof
 
       var hit = listView.HitTest(e.Location);
       if (hit.Item == null) return;
-      if (hit.Item.Tag is not SatnogsDbSatellite sat) return;
+      if (hit.Item.Tag is not MonitoredSatelliteEntry entry) return;
 
       int col = hit.Item.SubItems.IndexOf(hit.SubItem);
       if (col != AudioColumnIndex && col != IqColumnIndex) return;
 
-      var cust = ctx.Settings.Satellites.SatelliteCustomizations.GetOrCreate(sat.sat_id);
       if (col == AudioColumnIndex)
-        cust.AutoRecordMode = cust.AutoRecordMode == AutoRecordMode.Audio ? AutoRecordMode.Off : AutoRecordMode.Audio;
+        entry.AutoRecordMode = entry.AutoRecordMode == AutoRecordMode.Audio ? AutoRecordMode.Off : AutoRecordMode.Audio;
       else
-        cust.AutoRecordMode = cust.AutoRecordMode == AutoRecordMode.Iq ? AutoRecordMode.Off : AutoRecordMode.Iq;
+        entry.AutoRecordMode = entry.AutoRecordMode == AutoRecordMode.Iq ? AutoRecordMode.Off : AutoRecordMode.Iq;
 
-      ctx.Settings.SaveToFile();
+      ctx.MonitoredSatellites.SaveToFile();
       RefreshList();
     }
 
     private void SelectInApp()
     {
       if (listView.SelectedItems.Count == 0) return;
-      var sat = listView.SelectedItems[0].Tag as SatnogsDbSatellite;
-      if (sat == null) return;
-      ctx.SatelliteSelector.SetSelectedSatellite(sat);
+      if (listView.SelectedItems[0].Tag is not MonitoredSatelliteEntry entry) return;
+      ctx.MonitoredSatellites.ApplyEntryToSelector(ctx, entry);
     }
 
     private void MoveSelected(int delta)
     {
       if (listView.SelectedItems.Count == 0) return;
-      var sat = listView.SelectedItems[0].Tag as SatnogsDbSatellite;
-      if (sat == null) return;
+      if (listView.SelectedItems[0].Tag is not MonitoredSatelliteEntry entry) return;
 
-      var ids = ctx.Settings.Satellites.MonitoredSatelliteIds;
-      int idx = ids.IndexOf(sat.sat_id);
+      var entries = ctx.MonitoredSatellites.CurrentEntries;
+      int idx = entries.IndexOf(entry);
       if (idx < 0) return;
       int newIdx = idx + delta;
-      if (newIdx < 0 || newIdx >= ids.Count) return;
+      if (newIdx < 0 || newIdx >= entries.Count) return;
 
-      (ids[idx], ids[newIdx]) = (ids[newIdx], ids[idx]);
-      ctx.Settings.SaveToFile();
+      ctx.MonitoredSatellites.MoveEntry(idx, newIdx);
 
       RefreshList();
       if (listView.Items.Count == 0) return;
@@ -362,11 +474,9 @@ namespace SkyRoof
     private void RemoveSelected()
     {
       if (listView.SelectedItems.Count == 0) return;
-      var sat = listView.SelectedItems[0].Tag as SatnogsDbSatellite;
-      if (sat == null) return;
+      if (listView.SelectedItems[0].Tag is not MonitoredSatelliteEntry entry) return;
 
-      ctx.Settings.Satellites.MonitoredSatelliteIds.RemoveAll(id => id == sat.sat_id);
-      ctx.Settings.SaveToFile();
+      ctx.MonitoredSatellites.RemoveEntry(entry.SatelliteId);
       ctx.MonitoredPasses?.FullRebuild();
 
       RefreshList();
@@ -423,26 +533,19 @@ namespace SkyRoof
       dst = Math.Max(0, Math.Min(dst, listView.Items.Count - 1));
       if (dst == src) return;
 
-      var srcSat = listView.Items[src].Tag as SatnogsDbSatellite;
-      if (srcSat == null) return;
+      var srcEntry = listView.Items[src].Tag as MonitoredSatelliteEntry;
+      if (srcEntry == null) return;
 
-      var ids = ctx.Settings.Satellites.MonitoredSatelliteIds;
-      int srcIdIndex = ids.IndexOf(srcSat.sat_id);
+      var entries = ctx.MonitoredSatellites.CurrentEntries;
+      int srcIdIndex = entries.IndexOf(srcEntry);
       if (srcIdIndex < 0) return;
 
-      // map ListView dst index to sat id
-      string? dstSatId = (listView.Items[dst].Tag as SatnogsDbSatellite)?.sat_id;
+      string? dstSatId = (listView.Items[dst].Tag as MonitoredSatelliteEntry)?.SatelliteId;
       if (dstSatId == null) return;
-      int dstIdIndex = ids.IndexOf(dstSatId);
+      int dstIdIndex = entries.FindIndex(e => e.SatelliteId == dstSatId);
       if (dstIdIndex < 0) return;
 
-      // move the id in the priority list
-      var moved = ids[srcIdIndex];
-      ids.RemoveAt(srcIdIndex);
-      if (dstIdIndex > srcIdIndex) dstIdIndex -= 1;
-      ids.Insert(dstIdIndex, moved);
-
-      ctx.Settings.SaveToFile();
+      ctx.MonitoredSatellites.MoveEntry(srcIdIndex, dstIdIndex);
       RefreshList();
 
       if (listView.Items.Count == 0) return;
@@ -461,7 +564,7 @@ namespace SkyRoof
       btn.AccessibleName = toolTip;
     }
 
-    private static void ConfigureGlyphButton(Button btn, string mdl2Glyph, string toolTip)
+    private static void ConfigureGlyphButton(Button btn, string mdl2Glyph, string toolTipText, ToolTip? toolTip = null)
     {
       btn.Text = mdl2Glyph;
       btn.Font = new Font("Segoe MDL2 Assets", 10f);
@@ -469,7 +572,8 @@ namespace SkyRoof
       btn.Size = new Size(28, 28);
       btn.Margin = new Padding(0, 0, 8, 0);
       btn.UseVisualStyleBackColor = true;
-      btn.AccessibleName = toolTip;
+      btn.AccessibleName = toolTipText;
+      toolTip?.SetToolTip(btn, toolTipText);
     }
 
     private static Image RotateBitmap(Image source, RotateFlipType rotate)

@@ -141,7 +141,7 @@ namespace SkyRoof
         return;
       }
 
-      bool monitored = ctx.Settings.Satellites.MonitoredSatelliteIds.Contains(Satellite.sat_id);
+      bool monitored = ctx.MonitoredSatellites.Contains(Satellite.sat_id);
       MonitorSatelliteMNU.Text = monitored ? "Unmonitor Satellite" : "Monitor Satellite";
     }
 
@@ -153,13 +153,9 @@ namespace SkyRoof
 
     private void ToggleMonitored(SatnogsDbSatellite sat)
     {
-      var ids = ctx.Settings.Satellites.MonitoredSatelliteIds;
-      if (ids.Contains(sat.sat_id))
-        ids.RemoveAll(id => id == sat.sat_id);
-      else
-        ids.Add(sat.sat_id);
-
-      ctx.Settings.SaveToFile();
+      string? txId = ctx.SatelliteSelector.SelectedTransmitter?.uuid
+        ?? sat.Transmitters.FirstOrDefault()?.uuid;
+      ctx.MonitoredSatellites.ToggleEntry(sat, txId);
       ctx.MonitoredPasses?.FullRebuild();
       ctx.MonitoredSatellitesPanel?.RefreshList();
     }

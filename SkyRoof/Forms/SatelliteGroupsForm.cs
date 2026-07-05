@@ -480,20 +480,18 @@ namespace SkyRoof
     }
 
     private bool IsMonitored(SatnogsDbSatellite sat) => IsMonitored(sat.sat_id);
-    private bool IsMonitored(string satId) => ctx.Settings.Satellites.MonitoredSatelliteIds.Contains(satId);
+    private bool IsMonitored(string satId) => ctx.MonitoredSatellites.Contains(satId);
 
     private void SetMonitored(SatnogsDbSatellite sat, bool monitored)
     {
-      var list = ctx.Settings.Satellites.MonitoredSatelliteIds;
       if (monitored)
       {
-        if (!list.Contains(sat.sat_id))
-          list.Add(sat.sat_id); // add as lowest priority; can be reprioritized in the monitored panel
+        if (!ctx.MonitoredSatellites.Contains(sat.sat_id))
+          ctx.MonitoredSatellites.AddEntry(sat, sat.Transmitters.FirstOrDefault()?.uuid);
       }
       else
-        list.RemoveAll(id => id == sat.sat_id);
+        ctx.MonitoredSatellites.RemoveEntry(sat.sat_id);
 
-      ctx.Settings.SaveToFile();
       ctx.MonitoredPasses?.FullRebuild();
       ctx.MonitoredSatellitesPanel?.RefreshList();
 
