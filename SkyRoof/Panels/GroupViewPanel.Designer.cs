@@ -62,7 +62,9 @@
       listView1.TabIndex = 8;
       listView1.UseCompatibleStateImageBehavior = false;
       listView1.View = View.Details;
+      listView1.VirtualMode = true;
       listView1.ColumnClick += listView1_ColumnClick;
+      listView1.RetrieveVirtualItem += listView1_RetrieveVirtualItem;
       listView1.SelectedIndexChanged += listView1_SelectedIndexChanged;
       listView1.MouseDown += listView1_MouseDown;
       // 

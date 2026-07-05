@@ -63,34 +63,11 @@ namespace SkyRoof
         .ToArray();
       ShowAmsatStatuses();
 
-      PopulateListView();
-      SyncVirtualListSize();
+      listView1.VirtualListSize = Items.Length;
+      listView1.Invalidate();
 
       ShowSelectedSat();
       GroupNameLabel.Text = $"Group:   {group.Name}";
-    }
-
-    // fill the (non-virtual) list from the Items array, preserving its order
-    private void PopulateListView()
-    {
-      listView1.BeginUpdate();
-      listView1.Items.Clear();
-      listView1.Items.AddRange(Items);
-      listView1.EndUpdate();
-    }
-
-    protected override void OnLoad(EventArgs e)
-    {
-      base.OnLoad(e);
-      SyncVirtualListSize();
-    }
-
-    private void SyncVirtualListSize()
-    {
-      Items ??= Array.Empty<ListViewItem>();
-      listView1.VirtualListSize = Items.Length;
-      if (listView1.SelectedIndices.Count > 0 && listView1.SelectedIndices[0] >= Items.Length)
-        listView1.SelectedIndices.Clear();
     }
 
     private bool TryGetSelectedItem(out ItemData data)
@@ -204,7 +181,6 @@ namespace SkyRoof
       }
 
       if (changed) SortItems();
-      SyncVirtualListSize();
       listView1.Invalidate();
     }
 
@@ -218,7 +194,7 @@ namespace SkyRoof
         case 3: Items = Items.OrderBy(item => ((ItemData)item.Tag!).Pass?.MaxElevation).ToArray(); break;
       }
 
-      PopulateListView();
+      listView1.Invalidate();
     }
 
 
