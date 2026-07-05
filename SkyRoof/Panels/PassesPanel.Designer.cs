@@ -33,6 +33,8 @@
       CurrentSatBtn = new RadioButton();
       GroupBtn = new RadioButton();
       AllBtn = new RadioButton();
+      VhfBtn = new RadioButton();
+      UhfBtn = new RadioButton();
       panel1 = new Panel();
       listViewEx1 = new VE3NEA.ListViewEx();
       columnHeader1 = new ColumnHeader();
@@ -49,6 +51,8 @@
       flowLayoutPanel1.Controls.Add(CurrentSatBtn);
       flowLayoutPanel1.Controls.Add(GroupBtn);
       flowLayoutPanel1.Controls.Add(AllBtn);
+      flowLayoutPanel1.Controls.Add(VhfBtn);
+      flowLayoutPanel1.Controls.Add(UhfBtn);
       flowLayoutPanel1.Dock = DockStyle.Top;
       flowLayoutPanel1.Location = new Point(0, 0);
       flowLayoutPanel1.MaximumSize = new Size(0, 100);
@@ -90,6 +94,28 @@
       AllBtn.Text = "All VHF/UHF";
       AllBtn.UseVisualStyleBackColor = true;
       AllBtn.CheckedChanged += radioButton_CheckedChanged;
+      // 
+      // VhfBtn
+      // 
+      VhfBtn.AutoSize = true;
+      VhfBtn.Location = new Point(280, 3);
+      VhfBtn.Name = "VhfBtn";
+      VhfBtn.Size = new Size(47, 19);
+      VhfBtn.TabIndex = 3;
+      VhfBtn.Text = "VHF";
+      VhfBtn.UseVisualStyleBackColor = true;
+      VhfBtn.CheckedChanged += radioButton_CheckedChanged;
+      // 
+      // UhfBtn
+      // 
+      UhfBtn.AutoSize = true;
+      UhfBtn.Location = new Point(333, 3);
+      UhfBtn.Name = "UhfBtn";
+      UhfBtn.Size = new Size(48, 19);
+      UhfBtn.TabIndex = 4;
+      UhfBtn.Text = "UHF";
+      UhfBtn.UseVisualStyleBackColor = true;
+      UhfBtn.CheckedChanged += radioButton_CheckedChanged;
       // 
       // panel1
       // 
@@ -163,6 +189,8 @@
     private RadioButton GroupBtn;
     private Panel panel1;
     private RadioButton AllBtn;
+    private RadioButton VhfBtn;
+    private RadioButton UhfBtn;
     private VE3NEA.ListViewEx listViewEx1;
     private ColumnHeader columnHeader1;
     private ContextMenuStrip contextMenuStrip1;

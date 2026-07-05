@@ -151,10 +151,14 @@ namespace SkyRoof
       {
       }
 
-      else
+      else if (AllBtn.Checked || VhfBtn.Checked || UhfBtn.Checked)
       {
         passes = ctx.HamPasses.GetPassesSnapshot();
         endTime = startTime + TimeSpan.FromHours(2);
+        if (VhfBtn.Checked)
+          passes = passes.Where(p => p.Satellite.Flags.HasFlag(SatelliteFlags.Vhf));
+        else if (UhfBtn.Checked)
+          passes = passes.Where(p => p.Satellite.Flags.HasFlag(SatelliteFlags.Uhf));
       }
 
       passes = passes.Where(pass => pass.EndTime >= startTime && pass.StartTime < endTime);
@@ -194,14 +198,20 @@ namespace SkyRoof
     {
       if (CurrentSatBtn.Checked) return 0;
       if (GroupBtn.Checked) return 1;
+      if (AllBtn.Checked) return 2;
+      if (VhfBtn.Checked) return 3;
+      if (UhfBtn.Checked) return 4;
       return 2;
     }
 
     private void SetRadioButtonIndex(int index)
     {
+      if (index < 0 || index > 4) index = 2;
       CurrentSatBtn.Checked = index == 0;
       GroupBtn.Checked = index == 1;
       AllBtn.Checked = index == 2;
+      VhfBtn.Checked = index == 3;
+      UhfBtn.Checked = index == 4;
     }
 
 
