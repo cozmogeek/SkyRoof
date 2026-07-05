@@ -66,14 +66,40 @@ namespace SkyRoof
 
     public void SetPass(SatellitePass? pass)
     {
-      Path = pass == null ? null : Path = new(pass, ctx.Settings.Rotator, AntBearing);
+      if (pass == null)
+      {
+        if (Path == null) return;
+        Path = null;
+        ResetUi();
+        Advance();
+        ctx.MainForm.ShowRotatorStatus();
+        UpdatePathOptimizerForm();
+        return;
+      }
 
-      ResetUi();
+      if (IsSamePass(Path?.Pass, pass))
+      {
+        TrackCheckbox.Enabled = ctx.Settings.Rotator.Enabled;
+        Advance();
+        ctx.MainForm.ShowRotatorStatus();
+        return;
+      }
+
+      bool keepTracking = TrackCheckbox.Checked;
+      Path = new OptimizedRotationPath(pass, ctx.Settings.Rotator, AntBearing);
+      ResetUi(keepTracking);
       Advance();
-      // show black LED if no satellite
       ctx.MainForm.ShowRotatorStatus();
-
       UpdatePathOptimizerForm();
+    }
+
+    public void TrackPass(SatellitePass pass)
+    {
+      if (TrackCheckbox.Checked && IsSamePass(Path?.Pass, pass)) return;
+
+      SetPass(pass);
+      if (TrackCheckbox.Enabled && !TrackCheckbox.Checked)
+        TrackCheckbox.Checked = true;
     }
 
     public void Park()
@@ -90,7 +116,11 @@ namespace SkyRoof
       if (Path == null) return;
 
       SatBearing = Path.GetSatelliteBearing()?.Normalize();
-      if (SatBearing == null) StopRotation();
+      if (SatBearing == null)
+      {
+        ClearDisplayLabels();
+        return;
+      }
 
       BearingToUi();
       ctx.Announcer.AnnouncePosition(SatBearing);
@@ -168,7 +198,7 @@ namespace SkyRoof
         }
       }
       else
-        StopRotation();
+        engine?.StopRotation();
 
       // update color
       BearingToUi();
@@ -181,7 +211,15 @@ namespace SkyRoof
       StopRotation();
     }
 
-    private void ResetUi()
+    private void ResetUi(bool preserveTracking = false)
+    {
+      ClearDisplayLabels();
+      if (!preserveTracking)
+        TrackCheckbox.Checked = false;
+      TrackCheckbox.Enabled = ctx.Settings.Rotator.Enabled && Path != null;
+    }
+
+    private void ClearDisplayLabels()
     {
       SatelliteAzimuthLabel.ForeColor = Color.Gray;
       SatelliteElevationLabel.ForeColor = Color.Gray;
@@ -190,15 +228,16 @@ namespace SkyRoof
       SatelliteElevationLabel.Text = "0°";
       AntennaAzimuthLabel.Text = "---";
       AntennaElevationLabel.Text = "---";
-
-      TrackCheckbox.Checked = false;
-      TrackCheckbox.Enabled = ctx.Settings.Rotator.Enabled && Path != null;
     }
 
     private void BearingToUi()
     {
       var realSatBearing = Path?.GetRealSatelliteBearing();
-      if (realSatBearing == null || SatBearing == null) { ResetUi(); return; }
+      if (realSatBearing == null || SatBearing == null)
+      {
+        ClearDisplayLabels();
+        return;
+      }
 
       Color satColor = TrackCheckbox.Checked ? Color.Aqua : Color.Teal;
 
@@ -280,6 +319,12 @@ namespace SkyRoof
     private void UpdatePathOptimizerForm()
     {
       dialog.UpdateContents(Path);
+    }
+
+    private static bool IsSamePass(SatellitePass? a, SatellitePass? b)
+    {
+      if (a == null || b == null) return false;
+      return a.Satellite == b.Satellite && a.StartTime == b.StartTime && a.EndTime == b.EndTime;
     }
   }
 }

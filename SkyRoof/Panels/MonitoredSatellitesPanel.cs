@@ -32,12 +32,16 @@ namespace SkyRoof
     private const string NextPassToolTip = "Time until the next pass";
     private const string AudioRecordToolTip = "Enable audio recording for this satellite";
     private const string IqRecordToolTip = "Enable I/Q recording for this satellite.";
+    private const string RotatorToolTip =
+      "Automatically track this satellite with the rotator starting 30 seconds before the pass";
     private const int SatelliteColumnIndex = 1;
     private const int SatelliteColumnMaxWidth = 240;
     private const int NextColumnIndex = 3;
     private const int MaxColumnIndex = 4;
     private const int AudioColumnIndex = 5;
     private const int IqColumnIndex = 6;
+    private const int RotatorColumnIndex = 7;
+    private static readonly Color SelectedSatBackColor = Color.LightGreen;
 
     public MonitoredSatellitesPanel(Context ctx)
     {
@@ -196,6 +200,7 @@ namespace SkyRoof
       listView.Columns[MaxColumnIndex].TextAlign = HorizontalAlignment.Right;
       listView.Columns.Add("Audio", MeasureColumnHeaderWidth(listView, "Audio"));
       listView.Columns.Add("I/Q", 45);
+      listView.Columns.Add("Rotator", MeasureColumnHeaderWidth(listView, "Rotator"));
       listView.DoubleClick += (s, e) => SelectInApp();
       listView.MouseMove += ListView_MouseMove;
       listView.MouseLeave += (s, e) => listColumnToolTip.SetToolTip(listView, "");
@@ -316,9 +321,11 @@ namespace SkyRoof
 
           string audio = entry.AutoRecordMode == AutoRecordMode.Audio ? "☑" : "☐";
           string iq = entry.AutoRecordMode == AutoRecordMode.Iq ? "☑" : "☐";
+          string rotator = entry.AutoRotator ? "☑" : "☐";
 
-          var item = new ListViewItem([(i + 1).ToString(), sat.name, txName, "", "", audio, iq]);
+          var item = new ListViewItem([(i + 1).ToString(), sat.name, txName, "", "", audio, iq, rotator]);
           item.Tag = entry;
+          ApplyItemHighlight(item, sat == ctx.SatelliteSelector.SelectedSatellite);
           listView.Items.Add(item);
         }
       }
@@ -331,6 +338,34 @@ namespace SkyRoof
 
       ResizeSatelliteColumnIfNeeded();
       UpdateNextPassCountdown();
+    }
+
+    public void ShowSelectedSatellite()
+    {
+      if (IsDisposed) return;
+
+      var selected = ctx.SatelliteSelector.SelectedSatellite;
+      listView.BeginUpdate();
+      try
+      {
+        foreach (ListViewItem item in listView.Items)
+        {
+          if (item.Tag is not MonitoredSatelliteEntry entry) continue;
+          var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
+          ApplyItemHighlight(item, sat != null && sat == selected);
+        }
+      }
+      finally
+      {
+        listView.EndUpdate();
+      }
+    }
+
+    private static void ApplyItemHighlight(ListViewItem item, bool selected)
+    {
+      item.UseItemStyleForSubItems = true;
+      item.BackColor = selected ? SelectedSatBackColor : SystemColors.Window;
+      item.ForeColor = SystemColors.WindowText;
     }
 
     private bool HasSavedColumnWidths =>
@@ -363,7 +398,7 @@ namespace SkyRoof
         {
           if (item.Tag is not MonitoredSatelliteEntry entry) continue;
           var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
-          if (sat == null || item.SubItems.Count <= IqColumnIndex) continue;
+          if (sat == null || item.SubItems.Count <= RotatorColumnIndex) continue;
 
           var active = passes.FirstOrDefault(p => p.Satellite == sat && p.StartTime <= now && p.EndTime > now);
           if (active != null)
@@ -410,6 +445,7 @@ namespace SkyRoof
         NextColumnIndex => NextPassToolTip,
         AudioColumnIndex => AudioRecordToolTip,
         IqColumnIndex => IqRecordToolTip,
+        RotatorColumnIndex => RotatorToolTip,
         _ => "",
       };
     }
@@ -435,12 +471,14 @@ namespace SkyRoof
       if (hit.Item.Tag is not MonitoredSatelliteEntry entry) return;
 
       int col = hit.Item.SubItems.IndexOf(hit.SubItem);
-      if (col != AudioColumnIndex && col != IqColumnIndex) return;
-
       if (col == AudioColumnIndex)
         entry.AutoRecordMode = entry.AutoRecordMode == AutoRecordMode.Audio ? AutoRecordMode.Off : AutoRecordMode.Audio;
-      else
+      else if (col == IqColumnIndex)
         entry.AutoRecordMode = entry.AutoRecordMode == AutoRecordMode.Iq ? AutoRecordMode.Off : AutoRecordMode.Iq;
+      else if (col == RotatorColumnIndex)
+        entry.AutoRotator = !entry.AutoRotator;
+      else
+        return;
 
       ctx.MonitoredSatellites.SaveToFile();
       RefreshList();

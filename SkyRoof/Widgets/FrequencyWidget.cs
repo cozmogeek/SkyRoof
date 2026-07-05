@@ -60,9 +60,12 @@ namespace SkyRoof
     //----------------------------------------------------------------------------------------------
     public void SetTransmitter()
     {
+      bool wasCrossband = RadioLink.IsCrossBand;
+      bool hadUplink = RadioLink.HasUplink;
       SettingsToRadioLink(false);
       RadioLinkToUi();
-      ctx.CatControl.ApplySettings();
+      if (RadioLink.IsCrossBand != wasCrossband || RadioLink.HasUplink != hadUplink)
+        ctx.CatControl.ApplySettings();
       ctx.RotatorControl.SetSatellite(ctx.SatelliteSelector.SelectedSatellite);
       RadioLinkToRadio();
       UpdateTxButton();

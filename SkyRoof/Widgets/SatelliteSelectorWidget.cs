@@ -90,6 +90,8 @@ namespace SkyRoof
 
     public void SetSelectedSatellite(SatnogsDbSatellite satellite)
     {
+      if (SelectedSatellite?.sat_id == satellite.sat_id) return;
+
       ctx.Settings.Satellites.SelectedSatelliteId = satellite.sat_id;
 
       if (SelectedGroup.SatelliteIds.Contains(satellite.sat_id))
@@ -100,6 +102,8 @@ namespace SkyRoof
 
     public void SetSelectedTransmitter(SatnogsDbTransmitter tx)
     {
+      if (SelectedTransmitter?.uuid == tx.uuid && SelectedSatellite?.sat_id == tx.Satellite.sat_id) return;
+
       ctx.Settings.Satellites.SatelliteCustomizations.GetOrCreate(tx.Satellite.sat_id)
         .SelectedTransmitterId = tx.uuid;
 
@@ -110,6 +114,8 @@ namespace SkyRoof
 
     public void SetSelectedPass(SatellitePass? pass)
     {
+      if (IsSamePass(SelectedPass, pass)) return;
+
       SelectedPass = pass;
 
       SelectedPassChanged?.Invoke(this, EventArgs.Empty);
@@ -295,6 +301,13 @@ namespace SkyRoof
       e.DrawFocusRectangle();
 
       derivedFont?.Dispose();
+    }
+
+    private static bool IsSamePass(SatellitePass? a, SatellitePass? b)
+    {
+      if (a == null && b == null) return true;
+      if (a == null || b == null) return false;
+      return a.Satellite == b.Satellite && a.StartTime == b.StartTime && a.EndTime == b.EndTime;
     }
   }
 }

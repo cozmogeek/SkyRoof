@@ -8,6 +8,7 @@ namespace SkyRoof
     public string SatelliteId = "";
     public string? TransmitterId;
     public AutoRecordMode AutoRecordMode = AutoRecordMode.Off;
+    public bool AutoRotator;
   }
 
   public class MonitoredSatelliteList
@@ -98,6 +99,7 @@ namespace SkyRoof
           SatelliteId = e.SatelliteId,
           TransmitterId = e.TransmitterId,
           AutoRecordMode = e.AutoRecordMode,
+          AutoRotator = e.AutoRotator,
         }).ToList(),
       };
       Lists.Add(clone);

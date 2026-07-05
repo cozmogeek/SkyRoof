@@ -1115,6 +1115,7 @@ namespace SkyRoof
       ctx.QsoEntryPanel?.SetUtc();
 
       AutoSelectMonitoredSatelliteForActivePass();
+      AutoRotatorForMonitoredPasses();
       AutoRecordSelectedMonitoredSatellite();
       ctx.TelemetryPanel?.UpdateTxStatus();
 
@@ -1260,6 +1261,7 @@ namespace SkyRoof
       ctx.PassesPanel?.ShowPasses();
       ctx.QsoEntryPanel?.SetSatellite();
       SatellitePhotoWidget.SetSatellite(ctx.SatelliteSelector.SelectedSatellite);
+      ctx.MonitoredSatellitesPanel?.ShowSelectedSatellite();
     }
 
     private void SatelliteSelector_SelectedTransmitterChanged(object sender, EventArgs e)
@@ -1312,7 +1314,8 @@ namespace SkyRoof
 
       if (activePasses.Count == 0)
       {
-        AutoParkRotatorBetweenPasses(now);
+        if (LastAutoRotatorSatId == null)
+          AutoParkRotatorBetweenPasses(now);
         return;
       }
 
@@ -1364,6 +1367,117 @@ namespace SkyRoof
       ctx.SatelliteSelector.SetSelectedPass(activeById[chosenId]);
     }
 
+    private string? LastAutoRotatorSatId;
+    private static readonly TimeSpan AutoRotatorLeadTime = TimeSpan.FromSeconds(30);
+
+    private void AutoRotatorForMonitoredPasses()
+    {
+      if (!ctx.Settings.Satellites.AutoMonitorEnabled)
+      {
+        if (LastAutoRotatorSatId != null)
+          EndAutoRotatorSession();
+        return;
+      }
+      if (!ctx.Settings.Rotator.Enabled) return;
+      if (ctx.MonitoredPasses == null) return;
+
+      var entries = ctx.MonitoredSatellites.CurrentEntries;
+      if (!entries.Any(e => e.AutoRotator))
+      {
+        if (LastAutoRotatorSatId != null)
+          EndAutoRotatorSession();
+        return;
+      }
+
+      var now = DateTime.UtcNow;
+      var passes = ctx.MonitoredPasses.GetPassesSnapshot();
+
+      var activeById = passes
+        .Where(p => p.StartTime <= now && p.EndTime > now)
+        .GroupBy(p => p.Satellite.sat_id)
+        .ToDictionary(g => g.Key, g => g.First());
+
+      MonitoredSatelliteEntry? chosenEntry = null;
+      SatellitePass? chosenPass = null;
+
+      foreach (var entry in entries)
+      {
+        if (!entry.AutoRotator) continue;
+
+        bool higherPriorityActive = false;
+        foreach (var higher in entries)
+        {
+          if (higher == entry) break;
+          if (activeById.ContainsKey(higher.SatelliteId))
+          {
+            higherPriorityActive = true;
+            break;
+          }
+        }
+        if (higherPriorityActive) continue;
+
+        var pass = passes.FirstOrDefault(p =>
+          p.Satellite.sat_id == entry.SatelliteId &&
+          now >= p.StartTime - AutoRotatorLeadTime &&
+          p.EndTime > now);
+        if (pass == null) continue;
+
+        chosenEntry = entry;
+        chosenPass = pass;
+        break;
+      }
+
+      if (chosenEntry == null || chosenPass == null)
+      {
+        if (LastAutoRotatorSatId != null)
+          EndAutoRotatorSession();
+        return;
+      }
+
+      if (LastAutoRotatorSatId != null && LastAutoRotatorSatId != chosenEntry.SatelliteId)
+        ParkRotatorForSwitch();
+
+      bool inPrePass = chosenPass.StartTime > now;
+      bool shouldSelectSat = !inPrePass || activeById.Count == 0;
+
+      if (shouldSelectSat)
+      {
+        var selectedSat = ctx.SatelliteSelector.SelectedSatellite;
+        var selectedPass = ctx.SatelliteSelector.SelectedPass;
+        bool satChanged = selectedSat?.sat_id != chosenEntry.SatelliteId;
+        bool passChanged = selectedPass == null || selectedPass.Satellite != chosenPass.Satellite
+          || selectedPass.StartTime != chosenPass.StartTime;
+        if (satChanged)
+          ctx.MonitoredSatellites.ApplyEntryToSelector(ctx, chosenEntry);
+        else
+          ctx.MonitoredSatellites.ApplyMonitoredTransmitterForSelectedSat(ctx);
+        if (passChanged)
+          ctx.SatelliteSelector.SetSelectedPass(chosenPass);
+      }
+
+      RotatorWidget.TrackPass(chosenPass);
+      LastAutoRotatorSatId = chosenEntry.SatelliteId;
+    }
+
+    private void ParkRotatorForSwitch()
+    {
+      RotatorWidget.StopRotation();
+      if (ctx.SatelliteSelector.SelectedPass != null)
+        ctx.SatelliteSelector.SetSelectedPass(null);
+      RotatorWidget.Park();
+    }
+
+    private void EndAutoRotatorSession()
+    {
+      if (LastAutoRotatorSatId == null) return;
+
+      LastAutoRotatorSatId = null;
+      RotatorWidget.StopRotation();
+      if (ctx.SatelliteSelector.SelectedPass != null)
+        ctx.SatelliteSelector.SetSelectedPass(null);
+      RotatorWidget.Park();
+    }
+
     private void AutoParkRotatorBetweenPasses(DateTime nowUtc)
     {
       // only park when auto monitoring is enabled (to avoid unexpected movement).
@@ -1374,7 +1488,8 @@ namespace SkyRoof
       LastAutoParkTimeUtc = nowUtc;
 
       // clear the selected pass so tracking logic knows we're between passes.
-      ctx.SatelliteSelector.SetSelectedPass(null);
+      if (ctx.SatelliteSelector.SelectedPass != null)
+        ctx.SatelliteSelector.SetSelectedPass(null);
       RotatorWidget.Park();
     }
   }
