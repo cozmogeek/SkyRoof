@@ -42,6 +42,7 @@ namespace SkyRoof
     private const int IqColumnIndex = 6;
     private const int RotatorColumnIndex = 7;
     private static readonly Color SelectedSatBackColor = Color.LightGreen;
+    private static readonly Color NextMonitoredBackColor = Color.LightGoldenrodYellow;
 
     public MonitoredSatellitesPanel(Context ctx)
     {
@@ -170,6 +171,7 @@ namespace SkyRoof
         minElValueLabel.Text = $"{minElTrackBar.Value}°";
         minElSaveTimer.Stop();
         minElSaveTimer.Start();
+        UpdateRowHighlights();
       };
       minElTrackBar.MouseUp += (s, e) =>
       {
@@ -325,7 +327,6 @@ namespace SkyRoof
 
           var item = new ListViewItem([(i + 1).ToString(), sat.name, txName, "", "", audio, iq, rotator]);
           item.Tag = entry;
-          ApplyItemHighlight(item, sat == ctx.SatelliteSelector.SelectedSatellite);
           listView.Items.Add(item);
         }
       }
@@ -342,30 +343,7 @@ namespace SkyRoof
 
     public void ShowSelectedSatellite()
     {
-      if (IsDisposed) return;
-
-      var selected = ctx.SatelliteSelector.SelectedSatellite;
-      listView.BeginUpdate();
-      try
-      {
-        foreach (ListViewItem item in listView.Items)
-        {
-          if (item.Tag is not MonitoredSatelliteEntry entry) continue;
-          var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
-          ApplyItemHighlight(item, sat != null && sat == selected);
-        }
-      }
-      finally
-      {
-        listView.EndUpdate();
-      }
-    }
-
-    private static void ApplyItemHighlight(ListViewItem item, bool selected)
-    {
-      item.UseItemStyleForSubItems = true;
-      item.BackColor = selected ? SelectedSatBackColor : SystemColors.Window;
-      item.ForeColor = SystemColors.WindowText;
+      UpdateRowHighlights();
     }
 
     private bool HasSavedColumnWidths =>
@@ -390,6 +368,7 @@ namespace SkyRoof
 
       var now = DateTime.UtcNow;
       var passes = ctx.MonitoredPasses.GetPassesSnapshot();
+      string? nextAutoId = GetNextAutoMonitoredSatelliteId(passes, now);
 
       listView.BeginUpdate();
       try
@@ -405,22 +384,76 @@ namespace SkyRoof
           {
             item.SubItems[NextColumnIndex].Text = $"Now {Utils.TimespanToString(active.EndTime - now)}";
             item.SubItems[MaxColumnIndex].Text = $"{Math.Round(active.MaxElevation):F0}°";
-            continue;
+          }
+          else
+          {
+            var next = passes
+              .Where(p => p.Satellite == sat && p.StartTime > now)
+              .OrderBy(p => p.StartTime)
+              .FirstOrDefault();
+
+            item.SubItems[NextColumnIndex].Text = next == null ? "" : Utils.TimespanToString(next.StartTime - now);
+            item.SubItems[MaxColumnIndex].Text = next == null ? "" : $"{Math.Round(next.MaxElevation):F0}°";
           }
 
-          var next = passes
-            .Where(p => p.Satellite == sat && p.StartTime > now)
-            .OrderBy(p => p.StartTime)
-            .FirstOrDefault();
-
-          item.SubItems[NextColumnIndex].Text = next == null ? "" : Utils.TimespanToString(next.StartTime - now);
-          item.SubItems[MaxColumnIndex].Text = next == null ? "" : $"{Math.Round(next.MaxElevation):F0}°";
+          ApplyItemHighlight(item, sat == ctx.SatelliteSelector.SelectedSatellite,
+            nextAutoId != null && entry.SatelliteId == nextAutoId);
         }
       }
       finally
       {
         listView.EndUpdate();
       }
+    }
+
+    private void UpdateRowHighlights()
+    {
+      if (IsDisposed || refreshingList) return;
+      if (ctx.MonitoredPasses == null) return;
+
+      var now = DateTime.UtcNow;
+      var passes = ctx.MonitoredPasses.GetPassesSnapshot();
+      string? nextAutoId = GetNextAutoMonitoredSatelliteId(passes, now);
+      var selected = ctx.SatelliteSelector.SelectedSatellite;
+
+      listView.BeginUpdate();
+      try
+      {
+        foreach (ListViewItem item in listView.Items)
+        {
+          if (item.Tag is not MonitoredSatelliteEntry entry) continue;
+          var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
+          if (sat == null) continue;
+          ApplyItemHighlight(item, sat == selected, nextAutoId != null && entry.SatelliteId == nextAutoId);
+        }
+      }
+      finally
+      {
+        listView.EndUpdate();
+      }
+    }
+
+    private string? GetNextAutoMonitoredSatelliteId(IReadOnlyList<SatellitePass> passes, DateTime now)
+    {
+      if (!ctx.Settings.Satellites.AutoMonitorEnabled) return null;
+
+      int minEl = Math.Max(0, Math.Min(90, ctx.Settings.Satellites.AutoMonitorMinElevationDeg));
+      string? current = MonitoredSatellitesStore.GetAutoMonitoredSatelliteId(
+        ctx.MonitoredSatellites.CurrentEntries, passes, now, minEl);
+      string? next = ctx.MonitoredSatellites.PredictNextAutoMonitoredSatelliteId(
+        passes, now, minEl, autoMonitorEnabled: true);
+
+      if (next != null && next == current) return null;
+      return next;
+    }
+
+    private static void ApplyItemHighlight(ListViewItem item, bool selected, bool nextAutoMonitor)
+    {
+      item.UseItemStyleForSubItems = true;
+      item.BackColor = selected ? SelectedSatBackColor
+        : nextAutoMonitor ? NextMonitoredBackColor
+        : SystemColors.Window;
+      item.ForeColor = SystemColors.WindowText;
     }
 
     private void ListView_MouseMove(object? sender, MouseEventArgs e)

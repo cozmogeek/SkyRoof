@@ -243,5 +243,108 @@ namespace SkyRoof
       if (string.IsNullOrEmpty(SelectedListId) || !Lists.Any(l => l.Id == SelectedListId))
         SelectedListId = Lists[0].Id;
     }
+
+    /// <summary>Who auto-tuning would select among active passes at the given time.</summary>
+    public static string? GetAutoMonitoredSatelliteId(
+      IReadOnlyList<MonitoredSatelliteEntry> entries,
+      IReadOnlyList<SatellitePass> passes,
+      DateTime atTime,
+      int minElDeg)
+    {
+      var activeById = passes
+        .Where(p => p.StartTime <= atTime && p.EndTime > atTime)
+        .GroupBy(p => p.Satellite.sat_id)
+        .ToDictionary(g => g.Key, g => g.First());
+
+      if (activeById.Count == 0) return null;
+
+      bool anyMeets = activeById.Values.Any(p => p.MaxElevation >= minElDeg);
+
+      foreach (var entry in entries)
+      {
+        if (!activeById.TryGetValue(entry.SatelliteId, out var pass)) continue;
+        if (!anyMeets || pass.MaxElevation >= minElDeg)
+          return entry.SatelliteId;
+      }
+
+      return null;
+    }
+
+    /// <summary>Satellite auto-tuning will switch to next (null when none or auto tuning off).</summary>
+    public string? PredictNextAutoMonitoredSatelliteId(
+      IReadOnlyList<SatellitePass> passes,
+      DateTime now,
+      int minElDeg,
+      bool autoMonitorEnabled)
+    {
+      if (!autoMonitorEnabled) return null;
+
+      var entries = CurrentEntries;
+      if (entries.Count == 0) return null;
+
+      string? current = GetAutoMonitoredSatelliteId(entries, passes, now, minElDeg);
+      if (current == null)
+        return GetNextUpcomingAutoMonitoredSatelliteId(entries, passes, now, minElDeg);
+
+      var currentPass = passes.FirstOrDefault(p =>
+        p.Satellite.sat_id == current && p.StartTime <= now && p.EndTime > now);
+      if (currentPass == null)
+        return GetNextUpcomingAutoMonitoredSatelliteId(entries, passes, now, minElDeg);
+
+      int curIdx = entries.FindIndex(e => e.SatelliteId == current);
+
+      for (int i = 0; i < curIdx; i++)
+      {
+        var entry = entries[i];
+        var preempt = passes
+          .Where(p => p.Satellite.sat_id == entry.SatelliteId
+            && p.StartTime > now && p.StartTime < currentPass.EndTime)
+          .OrderBy(p => p.StartTime)
+          .FirstOrDefault();
+        if (preempt != null && WouldBeAutoMonitoredAtPassStart(entries, passes, preempt, minElDeg))
+          return entry.SatelliteId;
+      }
+
+      var atEnd = GetAutoMonitoredSatelliteId(entries, passes, currentPass.EndTime, minElDeg);
+      if (atEnd != null)
+        return atEnd;
+
+      return GetNextUpcomingAutoMonitoredSatelliteId(entries, passes, currentPass.EndTime, minElDeg);
+    }
+
+    private static bool WouldBeAutoMonitoredAtPassStart(
+      IReadOnlyList<MonitoredSatelliteEntry> entries,
+      IReadOnlyList<SatellitePass> passes,
+      SatellitePass pass,
+      int minElDeg) =>
+      GetAutoMonitoredSatelliteId(entries, passes, pass.StartTime, minElDeg) == pass.Satellite.sat_id;
+
+    private static string? GetNextUpcomingAutoMonitoredSatelliteId(
+      IReadOnlyList<MonitoredSatelliteEntry> entries,
+      IReadOnlyList<SatellitePass> passes,
+      DateTime afterTime,
+      int minElDeg)
+    {
+      SatellitePass? soonest = null;
+      string? soonestId = null;
+
+      foreach (var entry in entries)
+      {
+        var next = passes
+          .Where(p => p.Satellite.sat_id == entry.SatelliteId && p.StartTime > afterTime)
+          .OrderBy(p => p.StartTime)
+          .FirstOrDefault();
+        if (next == null) continue;
+        if (!WouldBeAutoMonitoredAtPassStart(entries, passes, next, minElDeg)) continue;
+
+        if (soonest == null || next.StartTime < soonest.StartTime)
+        {
+          soonest = next;
+          soonestId = entry.SatelliteId;
+        }
+      }
+
+      return soonestId;
+    }
   }
 }
