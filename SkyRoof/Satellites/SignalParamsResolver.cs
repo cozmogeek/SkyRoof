@@ -27,6 +27,11 @@ namespace SkyRoof.Satellites
       Framing framing = ResolveFraming(tx, je9pel);
 
       double? devOverride = mod == Modulation.GMSK ? null : Field(layers, l => l.deviation);
+      // AFSK (Bell-202 audio subcarrier over FM, e.g. 1k2 telemetry): the demod's "deviation" is the audio tone
+      // half-spacing (1200/2200 → 500 Hz), NOT the RF-FM deviation the DB/je9pel layers report. Pin the Bell-202
+      // value (the universal 1200 Bd amateur standard, and gr-satellites' curated value); the audio subcarrier
+      // centre (AfCarrier below) is pinned to 1700 Hz the same way.
+      if (mod == Modulation.AFSK) devOverride = 500;
 
       // Differential (PSK only): taken from the satyaml precoding — unlike the DB's unreliable
       // BPSK/DBPSK labels, satyaml states it explicitly (e.g. ASRTU-1 "precoding: differential").
@@ -44,7 +49,9 @@ namespace SkyRoof.Satellites
         Manchester = IsManchester(tx.manual?.modulation, tx.gr_sats?.modulation, tx.description),
         Differential = differential,
         RsBasis = Field(layers, l => l.rs_basis),
-        FrameSize = Field(layers, l => l.frame_size)
+        FrameSize = Field(layers, l => l.frame_size),
+        // Bell-202 audio subcarrier centre; only AFSK consumes it (1700 Hz standard for 1200 Bd telemetry).
+        AfCarrier = mod == Modulation.AFSK ? 1700 : null
       };
       // CCSDS carry-through facts (block variant, scrambler, precoding, convolutional, interleaving) are a
       // satyaml concept expressed as structured fields, so they resolve over the structured layers only —
@@ -190,15 +197,16 @@ namespace SkyRoof.Satellites
 
     /// <summary>
     /// Classify modulation from one DB <c>mode</c> / <c>description</c> string. Order matters:
-    /// GMSK/GFSK are checked before the generic "FSK" substring they contain. AFSK is treated as
-    /// plain FSK (the demodulator handles it on the FSK path).
+    /// GMSK/GFSK are checked before the generic "FSK" substring they contain. AFSK is its own family
+    /// (Bell-202 audio subcarrier over FM) — the demodulator discriminates the RF to audio, then runs the
+    /// FSK engine on the recovered tones; keeping it distinct also selects carrier-symmetry CFO.
     /// </summary>
     public static Modulation ExtractyModulation(string? text)
     {
       string s = (text ?? "").ToUpperInvariant();
       if (s.Contains("GMSK")) return Modulation.GMSK;
       if (s.Contains("GFSK")) return Modulation.GFSK;
-      if (s.Contains("AFSK")) return Modulation.FSK;
+      if (s.Contains("AFSK")) return Modulation.AFSK;
       if (s.Contains("MSK")) return Modulation.FSK;
       if (s.Contains("FSK")) return Modulation.FSK;
 
