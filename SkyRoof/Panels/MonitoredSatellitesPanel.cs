@@ -193,6 +193,7 @@ namespace SkyRoof
       listView.FullRowSelect = true;
       listView.MultiSelect = false;
       listView.AllowDrop = true;
+      EnableDoubleBuffering(listView);
       listView.Columns.Add("#", 40);
       listView.Columns.Add("Satellite", MeasureColumnHeaderWidth(listView, "Satellite"));
       listView.Columns.Add("Transmitter", 130);
@@ -369,40 +370,33 @@ namespace SkyRoof
       var now = DateTime.UtcNow;
       var passes = ctx.MonitoredPasses.GetPassesSnapshot();
       string? nextAutoId = GetNextAutoMonitoredSatelliteId(passes, now);
+      var selected = ctx.SatelliteSelector.SelectedSatellite;
 
-      listView.BeginUpdate();
-      try
+      foreach (ListViewItem item in listView.Items)
       {
-        foreach (ListViewItem item in listView.Items)
+        if (item.Tag is not MonitoredSatelliteEntry entry) continue;
+        var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
+        if (sat == null || item.SubItems.Count <= RotatorColumnIndex) continue;
+
+        var active = passes.FirstOrDefault(p => p.Satellite == sat && p.StartTime <= now && p.EndTime > now);
+        if (active != null)
         {
-          if (item.Tag is not MonitoredSatelliteEntry entry) continue;
-          var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
-          if (sat == null || item.SubItems.Count <= RotatorColumnIndex) continue;
-
-          var active = passes.FirstOrDefault(p => p.Satellite == sat && p.StartTime <= now && p.EndTime > now);
-          if (active != null)
-          {
-            item.SubItems[NextColumnIndex].Text = $"Now {Utils.TimespanToString(active.EndTime - now)}";
-            item.SubItems[MaxColumnIndex].Text = $"{Math.Round(active.MaxElevation):F0}°";
-          }
-          else
-          {
-            var next = passes
-              .Where(p => p.Satellite == sat && p.StartTime > now)
-              .OrderBy(p => p.StartTime)
-              .FirstOrDefault();
-
-            item.SubItems[NextColumnIndex].Text = next == null ? "" : Utils.TimespanToString(next.StartTime - now);
-            item.SubItems[MaxColumnIndex].Text = next == null ? "" : $"{Math.Round(next.MaxElevation):F0}°";
-          }
-
-          ApplyItemHighlight(item, sat == ctx.SatelliteSelector.SelectedSatellite,
-            nextAutoId != null && entry.SatelliteId == nextAutoId);
+          SetSubItemText(item, NextColumnIndex, $"Now {Utils.TimespanToString(active.EndTime - now)}");
+          SetSubItemText(item, MaxColumnIndex, $"{Math.Round(active.MaxElevation):F0}°");
         }
-      }
-      finally
-      {
-        listView.EndUpdate();
+        else
+        {
+          var next = passes
+            .Where(p => p.Satellite == sat && p.StartTime > now)
+            .OrderBy(p => p.StartTime)
+            .FirstOrDefault();
+
+          SetSubItemText(item, NextColumnIndex, next == null ? "" : Utils.TimespanToString(next.StartTime - now));
+          SetSubItemText(item, MaxColumnIndex, next == null ? "" : $"{Math.Round(next.MaxElevation):F0}°");
+        }
+
+        ApplyItemHighlight(item, sat == selected && active != null,
+          nextAutoId != null && entry.SatelliteId == nextAutoId);
       }
     }
 
@@ -416,20 +410,13 @@ namespace SkyRoof
       string? nextAutoId = GetNextAutoMonitoredSatelliteId(passes, now);
       var selected = ctx.SatelliteSelector.SelectedSatellite;
 
-      listView.BeginUpdate();
-      try
+      foreach (ListViewItem item in listView.Items)
       {
-        foreach (ListViewItem item in listView.Items)
-        {
-          if (item.Tag is not MonitoredSatelliteEntry entry) continue;
-          var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
-          if (sat == null) continue;
-          ApplyItemHighlight(item, sat == selected, nextAutoId != null && entry.SatelliteId == nextAutoId);
-        }
-      }
-      finally
-      {
-        listView.EndUpdate();
+        if (item.Tag is not MonitoredSatelliteEntry entry) continue;
+        var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
+        if (sat == null) continue;
+        bool active = passes.Any(p => p.Satellite == sat && p.StartTime <= now && p.EndTime > now);
+        ApplyItemHighlight(item, sat == selected && active, nextAutoId != null && entry.SatelliteId == nextAutoId);
       }
     }
 
@@ -447,13 +434,28 @@ namespace SkyRoof
       return next;
     }
 
+    private static void SetSubItemText(ListViewItem item, int index, string text)
+    {
+      if (item.SubItems[index].Text != text)
+        item.SubItems[index].Text = text;
+    }
+
     private static void ApplyItemHighlight(ListViewItem item, bool selected, bool nextAutoMonitor)
     {
-      item.UseItemStyleForSubItems = true;
-      item.BackColor = selected ? SelectedSatBackColor
+      Color color = selected ? SelectedSatBackColor
         : nextAutoMonitor ? NextMonitoredBackColor
         : SystemColors.Window;
-      item.ForeColor = SystemColors.WindowText;
+
+      if (!item.UseItemStyleForSubItems) item.UseItemStyleForSubItems = true;
+      if (item.BackColor != color) item.BackColor = color;
+      if (item.ForeColor != SystemColors.WindowText) item.ForeColor = SystemColors.WindowText;
+    }
+
+    private static void EnableDoubleBuffering(ListView listView)
+    {
+      typeof(ListView)
+        .GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+        ?.SetValue(listView, true);
     }
 
     private void ListView_MouseMove(object? sender, MouseEventArgs e)

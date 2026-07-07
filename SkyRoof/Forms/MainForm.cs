@@ -1391,40 +1391,49 @@ namespace SkyRoof
 
       var now = DateTime.UtcNow;
       var passes = ctx.MonitoredPasses.GetPassesSnapshot();
+      int minEl = Math.Max(0, Math.Min(90, ctx.Settings.Satellites.AutoMonitorMinElevationDeg));
 
-      var activeById = passes
-        .Where(p => p.StartTime <= now && p.EndTime > now)
-        .GroupBy(p => p.Satellite.sat_id)
-        .ToDictionary(g => g.Key, g => g.First());
+      bool anyActive = passes.Any(p => p.StartTime <= now && p.EndTime > now);
 
       MonitoredSatelliteEntry? chosenEntry = null;
       SatellitePass? chosenPass = null;
 
-      foreach (var entry in entries)
+      if (anyActive)
       {
-        if (!entry.AutoRotator) continue;
-
-        bool higherPriorityActive = false;
-        foreach (var higher in entries)
+        // during active passes, follow the same priority + min-elevation choice as auto tuning,
+        // so the rotator and the tuner never fight over the selected satellite.
+        string? primaryId = MonitoredSatellitesStore.GetAutoMonitoredSatelliteId(entries, passes, now, minEl);
+        var primaryEntry = entries.FirstOrDefault(e => e.SatelliteId == primaryId);
+        if (primaryEntry != null && primaryEntry.AutoRotator)
         {
-          if (higher == entry) break;
-          if (activeById.ContainsKey(higher.SatelliteId))
-          {
-            higherPriorityActive = true;
-            break;
-          }
+          chosenEntry = primaryEntry;
+          chosenPass = passes.FirstOrDefault(p =>
+            p.Satellite.sat_id == primaryId && p.StartTime <= now && p.EndTime > now);
         }
-        if (higherPriorityActive) continue;
+      }
+      else
+      {
+        // no active pass: pre-position for the next upcoming rotator pass within the lead time,
+        // honoring priority + min elevation (the sat auto tuning would pick when it starts).
+        foreach (var entry in entries)
+        {
+          if (!entry.AutoRotator) continue;
 
-        var pass = passes.FirstOrDefault(p =>
-          p.Satellite.sat_id == entry.SatelliteId &&
-          now >= p.StartTime - AutoRotatorLeadTime &&
-          p.EndTime > now);
-        if (pass == null) continue;
+          var pass = passes
+            .Where(p => p.Satellite.sat_id == entry.SatelliteId
+              && now >= p.StartTime - AutoRotatorLeadTime && p.EndTime > now)
+            .OrderBy(p => p.StartTime)
+            .FirstOrDefault();
+          if (pass == null) continue;
 
-        chosenEntry = entry;
-        chosenPass = pass;
-        break;
+          if (MonitoredSatellitesStore.GetAutoMonitoredSatelliteId(entries, passes, pass.StartTime, minEl)
+              != entry.SatelliteId)
+            continue;
+
+          chosenEntry = entry;
+          chosenPass = pass;
+          break;
+        }
       }
 
       if (chosenEntry == null || chosenPass == null)
@@ -1438,7 +1447,7 @@ namespace SkyRoof
         ParkRotatorForSwitch();
 
       bool inPrePass = chosenPass.StartTime > now;
-      bool shouldSelectSat = !inPrePass || activeById.Count == 0;
+      bool shouldSelectSat = !inPrePass || !anyActive;
 
       if (shouldSelectSat)
       {
