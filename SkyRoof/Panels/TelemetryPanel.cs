@@ -225,7 +225,8 @@ namespace SkyRoof
       Modulation.FSK,
       Modulation.GFSK,
       Modulation.GMSK,
-      Modulation.BPSK
+      Modulation.BPSK,
+      Modulation.AFSK
     };
 
     private bool IsDecodable()
