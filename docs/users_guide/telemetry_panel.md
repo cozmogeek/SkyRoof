@@ -20,6 +20,10 @@ formats used by the supported satellites. The modulation, baud rate, and framing
 automatically from the transmitter description in the satellite database, so there is nothing to
 configure for the signal itself — you only have to select the right transmitter.
 
+The panel also decodes **SSTV** images from satellites that transmit them over an FM downlink. This
+is covered separately in [Receive SSTV Images](recevie_sstv.md); the rest of this page describes
+telemetry frame decoding.
+
 If the selected transmitter uses an unsupported modulation, or its parameters are unknown, the panel
 reports `format not supported`, and no decoding takes place.
 

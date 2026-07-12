@@ -1,61 +1,55 @@
-# How to Receive SSTV from ISS
+# Receive SSTV Images
 
-There are two popular programs that demodulate SSTV: **MMSSTV** and **RX-SSTV**,
-either one may be used with SkyRoof to receive SSTV transmissions form ISS.
+Some satellites transmit **SSTV** (Slow-Scan Television) images over an FM downlink. SkyRoof
+decodes these images with its built-in decoder, right inside the program — there is no need for an
+external SSTV program, a Virtual Audio Cable, or an output stream. The decoded image is built up
+line by line in the [Telemetry](telemetry_panel.md) panel as the satellite passes overhead.
 
-## Installing VAC
+![SSTV image](../images/sstv_image.png)
 
-A virtual audio cable, VAC, is required to pass the satellite signals demodulated in SkyRoof to the SSTV decoding program. Download and install [VB-Audio](https://vb-audio.com/Cable/index.htm) if you do not have it yet, and reboot your system. Be sure to get the latest version (2024) of VB-Audio, the old version may not work correctly.
+## Supported Modes
 
-## Setting Up MMSSTV
+The decoder supports the YCrCb mode family used by satellites:
 
-- download [MMSSTV](https://hamsoft.ca/pages/mmsstv.php), install it and run the program;
-- click on **Option / Setup MMSSTV** in the menu to open the settings dialog, and:
-  - click on the **Misc** tab;
-  - select your VAC in the **Sound Card / In** drop-down list;
-  - enter "48000" in the **Clock / Hz** box.
-- in the main window:
-  - click on the **RX** tab;
-  - in the **RX Mode** panel right-click on the second and third button, and select "PD120" and "PD180" respectively;
-  - click on **RX Mode / Auto**.
+- **Robot 36** and **Robot 72**;
+- **PD 50**, **PD 90**, **PD 120**, **PD 160**, **PD 180**, **PD 240**, and **PD 290**.
 
-## Setting Up RX-SSTV
+The mode is detected automatically from the **VIS** header and the sync cadence of the received
+signal, so you do not have to select it by hand. The RGB Martin and Scottie modes, which are rarely
+used by satellites, are currently not supported.
 
-- download [RX-SSTV](https://www.qsl.net/on6mu/rxsstv.htm), install it and run the program;
-- in the **Sound Card Selection** window that pops up on start-up select your VAC as **Sound Input**;
-- click on **Setup / SSTV Engine** in the menu, click on the **Misc**  tab, and set **Clock / Hz** to "12000";
-- click on **Setup / RX-SSTV** in the menu, under **User-defined buttons** set the first two buttons to "PD120" and" PD-180";
-- in the main window:
-  - click on the **RX** tab;
-  - click on the **PD120** or **PD180** button, depending on the mode used at ISS (see below).
+## Decoding an Image
 
-## Setting Up SkyRoof
+1. Open the [Telemetry](telemetry_panel.md) panel from the **View / Telemetry** menu.
 
-In SkyRoof:
+2. Select the satellite in the [Satellite Selector](satellite_selector.md) on the toolbar. If it is
+   not in the current group, add it using the [Satellites and Groups](satellites_and_groups_window.md)
+   dialog.
 
-- select the **ARISS** satellite. If it is not in the current group, add it using the
-[Satellites and Groups](satellites_and_groups_window.md) dialog;
-- Select ISS transmitter that is used to send SSTV (see below);
-- Select **FM** downlink mode in the drop-down list on the toolbar;
-- in the **Output Stream** section of the [Settings](setting_up_output_stream.md) window:
-  - select **Audio to VAC**;
-  - set Gain, dB to 0;
-  - select the VAC in the list of audio devices;
-  - click on the Output Stream label on the status bar to enable the output stream.
+3. Select the satellite's **SSTV transmitter**. You can select it in the
+   [Satellite Transmitters](satellite_transmitters_panel.md) panel, or by clicking on its label on the
+   [frequency scale](frequency_scale.md). The decoder follows the transmitter selection, so make sure
+   the SSTV transmitter is the one highlighted in the
+   [Satellite Transmitters](satellite_transmitters_panel.md) panel.
 
-## Receiving SSTV
+4. Make sure the SDR is running and tuned to the satellite. The decoder uses the same
+   Doppler-corrected passband as the receiver, so the satellite's signal must be visible on the
+   [waterfall](waterfall_display.md) at the tuned frequency.
 
-Find out when the next SSTV activity on ISS will take place, usually it happens every few months and lasts for up to a week. One good source of information about such activities is the
-[ARISS web site](https://www.ariss.org/upcoming-sstv-events.html). You will need to know:
-  
-- when SSTV signals will be transmitted;
-- which transmitter on ISS will be used, usually it is one of these:
-  - **Mode U - SSTV** on 437.800 MHz;
-  - **Mode V Imaging** on 145.800 MHz;
-- which SSTV mode will be used, usually it is either **PD120** or **PD180**. In these modes the image transmission takes 120 s and 180 s respectively.
+When the satellite is above the horizon and its signal starts to appear, the decoder detects the SSTV
+transmission and begins building the image. Each image appears as a node in the tree, under the pass
+node, and updates in place as new scan lines arrive. Select an image node to watch it build up in the
+detail pane on the right, together with a **META** section that shows the satellite, transmitter,
+mode, whether the VIS header was decoded, the number of rows received, and the decoding status.
 
-In SkyRoof, select ARISS in the list of satellites, and the transmitter that is used in the current SSTV activity. When ISS rises above the horizon and its signals start to appear on the waterfall, the RX-SSTV or MMSSTV program automatically starts decoding the image. If for some reason it doesn't, click on the SSTV mode button (PD120 or PD180) to start it manually.
+There is nothing to start or stop manually: the decoder rides through short signal fades and finalizes
+each image when it is complete or the signal is lost. A satellite whose transmitter alternates between
+telemetry and SSTV (such as UmKA-1) is handled automatically — the telemetry frames and the SSTV
+images both appear in the same panel.
 
-Here is an example of an image received from ISS in July 2025. Both SSTV decoders seem to have the same image quality, which is mainly determined by the signal strength variations:
+## Saved Images
 
-![SSTV](../images/iss_sstv.png)
+Each finalized image is saved automatically as a PNG file, with a JSON sidecar holding its metadata,
+in the **SstvImages** subfolder of the [data folder](data_folder.md). You can also right-click an
+image in the detail pane and choose **Save As...** to save it to a location of your choice, or
+**Copy** to copy it to the clipboard.
