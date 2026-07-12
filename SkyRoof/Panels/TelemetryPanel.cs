@@ -24,10 +24,12 @@ namespace SkyRoof
     private SignalParams? SignalParams;
     private TelemetryDecocder? Decoder;
     private SatnogsUploader? SatnogsUploader;
-    private TreeNode? CurrentPassNode;
     private TelemetryRegistry? TelemetryRegistry;
-    private TreeNode LastFrameNode;
-    private TreeNode LastImageNode;
+    // the most recently added tree node: either the pass node itself (before it has any leaves) or its
+    // last-added leaf. the pass node a frame/image belongs to is always this node's parent, or the node
+    // itself when it has no leaves yet — so a single field tracks both "current pass" and "last leaf"
+    private TreeNode? Current;
+    private TreeNode? CurrentPassNode => Current?.Parent ?? Current;
     private ILogger? FrameLogger;
     private DecodeSnapshot? CurrentDecode;
 
@@ -334,14 +336,11 @@ namespace SkyRoof
         CurrentPassNode!.ForeColor = Color.Empty;
       }
 
-      bool mustScroll = LastFrameNode == null || treeView1.SelectedNode == LastFrameNode;
-
       string addr = (snapshot.SignalParams.Framing == Framing.AX25G3RUH ? Ax25Address.Describe(frame.Bytes) : "") ?? "";
       string nodeText = $"{DateTime.Now:HH:mm:ss}  {frame.Length} bytes  {addr}";
-      LastFrameNode = new TreeNode(nodeText);
+      var frameNode = new TreeNode(nodeText);
       string frameText = BuildFrameText(frame, snapshot);
-      LastFrameNode.Tag = frameText;
-      CurrentPassNode.Nodes.Add(LastFrameNode);
+      frameNode.Tag = frameText;
       txPassInfo.FrameCount++;
 
       SaveFrameToFile(frame, addr, frameText, snapshot);
@@ -351,10 +350,8 @@ namespace SkyRoof
       // currently selected transmitter's decoder, so a late frame from a previous transmitter can't overwrite it.
       if (ReferenceEquals(snapshot, CurrentDecode)) UpdateParamsTooltip();
 
-      CurrentPassNode.Expand();
-
-      if (mustScroll) treeView1.SelectedNode = LastFrameNode;
-      else if (treeView1.SelectedNode == CurrentPassNode) richTextBox1.Text = txPassInfo.Describe();
+      AddLeaf(CurrentPassNode!, frameNode);
+      if (treeView1.SelectedNode == CurrentPassNode) richTextBox1.Text = txPassInfo.Describe();
     }
 
     /// <summary>Returns the current pass node's info, creating the pass node (grayed until the first valid
@@ -362,19 +359,42 @@ namespace SkyRoof
     private TxPassInfo EnsureCurrentPassNode(DecodeSnapshot snapshot)
     {
       int orbit = ctx.SdrPasses.GetNextPass(snapshot.Satellite)?.OrbitNumber ?? -1;
-      var txPassInfo = (TxPassInfo?)CurrentPassNode?.Tag;
+      var passNode = CurrentPassNode;
+      var txPassInfo = (TxPassInfo?)passNode?.Tag;
 
-      if (CurrentPassNode == null || !(txPassInfo!.IsSame(snapshot.Transmitter, orbit)))
+      if (passNode == null || !(txPassInfo!.IsSame(snapshot.Transmitter, orbit)))
       {
-        CurrentPassNode = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {snapshot.Transmitter.Satellite.name}  {snapshot.Transmitter.description}");
-        CurrentPassNode.ForeColor = Color.Gray;
+        passNode = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {snapshot.Transmitter.Satellite.name}  {snapshot.Transmitter.description}");
+        passNode.ForeColor = Color.Gray;
         txPassInfo = new TxPassInfo(snapshot.Transmitter, orbit);
         txPassInfo.SignalParams = snapshot.SignalParams;
-        CurrentPassNode.Tag = txPassInfo;
-        treeView1.Nodes.Add(CurrentPassNode);
+        passNode.Tag = txPassInfo;
+        treeView1.Nodes.Add(passNode);
+        TrackNewNode(passNode);
       }
 
       return txPassInfo!;
+    }
+
+    /// <summary>Selects the newly added node (pass or leaf) if the tree selection was tracking the previously
+    /// current node, or nothing was selected at all; otherwise leaves the user's selection alone. WinForms
+    /// scrolls a newly selected node into view automatically.</summary>
+    private void TrackNewNode(TreeNode newNode)
+    {
+      bool mustSelect = treeView1.SelectedNode == null || treeView1.SelectedNode == Current;
+      Current = newNode;
+      if (mustSelect) treeView1.SelectedNode = newNode;
+    }
+
+    /// <summary>Adds a leaf under the given pass node. Expands the pass node so the new leaf is visible, unless
+    /// the user deliberately collapsed it while it already had leaves and is still looking at its summary —
+    /// popping it open on every new frame/image would fight that choice.</summary>
+    private void AddLeaf(TreeNode passNode, TreeNode leaf)
+    {
+      bool keepCollapsed = !passNode.IsExpanded && passNode.Nodes.Count > 0 && treeView1.SelectedNode == passNode;
+      passNode.Nodes.Add(leaf);
+      if (!keepCollapsed) passNode.Expand();
+      TrackNewNode(leaf);
     }
 
     private string BuildFrameText(Frame frame, DecodeSnapshot snapshot)
@@ -432,16 +452,13 @@ namespace SkyRoof
       var txPassInfo = EnsureCurrentPassNode(snapshot);
 
       bool isNew = !imageNodes.TryGetValue(evt.ImageId, out TreeNode? node);
-      bool mustScroll = isNew && (LastImageNode == null || treeView1.SelectedNode == LastImageNode);
       if (isNew)
       {
         node = new TreeNode();
         node.Tag = new SstvImageInfo(snapshot, evt);
         imageNodes[evt.ImageId] = node;
-        CurrentPassNode!.Nodes.Add(node);
         txPassInfo.ImageCount++;
-        CurrentPassNode.Expand();
-        LastImageNode = node;
+        AddLeaf(CurrentPassNode!, node);
       }
 
       // swap in the new reconstruction; dispose the previous bitmap only after the PictureBox lets go of it
@@ -462,8 +479,6 @@ namespace SkyRoof
       }
 
       if (!evt.Final) StatusLabel.Text = "decoding...";
-
-      if (mustScroll) treeView1.SelectedNode = node;
 
       if (treeView1.SelectedNode == node) DisplayImageInfo(info);
       else if (treeView1.SelectedNode == CurrentPassNode) richTextBox1.Text = txPassInfo.Describe();
@@ -612,9 +627,7 @@ namespace SkyRoof
 
     private void ClearAllMNU_Click(object sender, EventArgs e)
     {
-      LastFrameNode = null;
-      LastImageNode = null;
-      CurrentPassNode = null;
+      Current = null;
       ShowTelemetryText();
       ImageBox.Image = null;
       richTextBox1.Clear();
