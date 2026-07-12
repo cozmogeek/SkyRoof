@@ -27,6 +27,7 @@ namespace SkyRoof
     private TreeNode? CurrentPassNode;
     private TelemetryRegistry? TelemetryRegistry;
     private TreeNode LastFrameNode;
+    private TreeNode LastImageNode;
     private ILogger? FrameLogger;
     private DecodeSnapshot? CurrentDecode;
 
@@ -146,6 +147,7 @@ namespace SkyRoof
     private void TelemetryPanel_Shown(object? sender, EventArgs e)
     {
       splitContainer1.SplitterDistance = ctx.Settings.Telemetry.SplitterDistance;
+      ImageSplitContainer.SplitterDistance = ctx.Settings.Telemetry.ImageSplitterDistance;
     }
 
     private void TelemetryPanel_FormClosing(object sender, FormClosingEventArgs e)
@@ -154,6 +156,7 @@ namespace SkyRoof
       ctx.TelemetryPanel = null;
       ctx.MainForm.TelemetryMNU.Checked = false;
       ctx.Settings.Telemetry.SplitterDistance = splitContainer1.SplitterDistance;
+      ctx.Settings.Telemetry.ImageSplitterDistance = ImageSplitContainer.SplitterDistance;
 
       // stop and free the decode pipeline (joins its worker thread and releases native FFTW memory)
       Decoder?.Dispose();
@@ -429,6 +432,7 @@ namespace SkyRoof
       var txPassInfo = EnsureCurrentPassNode(snapshot);
 
       bool isNew = !imageNodes.TryGetValue(evt.ImageId, out TreeNode? node);
+      bool mustScroll = isNew && (LastImageNode == null || treeView1.SelectedNode == LastImageNode);
       if (isNew)
       {
         node = new TreeNode();
@@ -437,6 +441,7 @@ namespace SkyRoof
         CurrentPassNode!.Nodes.Add(node);
         txPassInfo.ImageCount++;
         CurrentPassNode.Expand();
+        LastImageNode = node;
       }
 
       // swap in the new reconstruction; dispose the previous bitmap only after the PictureBox lets go of it
@@ -458,9 +463,7 @@ namespace SkyRoof
 
       if (!evt.Final) StatusLabel.Text = "decoding...";
 
-      // follow the image as it builds unless the user is inspecting some other node
-      if (isNew && (treeView1.SelectedNode == null || treeView1.SelectedNode == CurrentPassNode))
-        treeView1.SelectedNode = node;
+      if (mustScroll) treeView1.SelectedNode = node;
 
       if (treeView1.SelectedNode == node) DisplayImageInfo(info);
       else if (treeView1.SelectedNode == CurrentPassNode) richTextBox1.Text = txPassInfo.Describe();
@@ -468,9 +471,26 @@ namespace SkyRoof
 
     private void DisplayImageInfo(SstvImageInfo info)
     {
+      if (richTextBox1.Parent != ImageSplitContainer.Panel2)
+      {
+        richTextBox1.Parent = ImageSplitContainer.Panel2;
+        richTextBox1.Dock = DockStyle.Fill;
+      }
+      ImageSplitContainer.Visible = true;
       ImageBox.Image = info.Bitmap;
-      ImageMetaBox.Text = info.Describe();
-      ImagePanel.Visible = true;
+      richTextBox1.Text = info.Describe();
+    }
+
+    // switches the right panel back to plain telemetry text, undoing DisplayImageInfo's reparenting of
+    // richTextBox1 into the (now hidden) ImageSplitContainer
+    private void ShowTelemetryText()
+    {
+      if (richTextBox1.Parent != splitContainer1.Panel2)
+      {
+        richTextBox1.Parent = splitContainer1.Panel2;
+        richTextBox1.Dock = DockStyle.Fill;
+      }
+      ImageSplitContainer.Visible = false;
     }
 
     /// <summary>Auto-save the finalized image as PNG + JSON metadata sidecar under the user data folder.</summary>
@@ -580,7 +600,7 @@ namespace SkyRoof
         return;
       }
 
-      ImagePanel.Visible = false;
+      ShowTelemetryText();
       if (node.Level == 0)
       {
         var info = node.Tag as TxPassInfo;
@@ -593,8 +613,9 @@ namespace SkyRoof
     private void ClearAllMNU_Click(object sender, EventArgs e)
     {
       LastFrameNode = null;
+      LastImageNode = null;
       CurrentPassNode = null;
-      ImagePanel.Visible = false;
+      ShowTelemetryText();
       ImageBox.Image = null;
       richTextBox1.Clear();
       treeView1.Nodes.Clear();

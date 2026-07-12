@@ -37,9 +37,8 @@ namespace SkyRoof
       ClearAllMNU = new ToolStripMenuItem();
       richTextBox1 = new RichTextBox();
       splitContainer1 = new SplitContainer();
-      ImagePanel = new Panel();
+      ImageSplitContainer = new SplitContainer();
       ImageBox = new PictureBox();
-      ImageMetaBox = new TextBox();
       ImageMenu = new ContextMenuStrip(components);
       SaveImageMNU = new ToolStripMenuItem();
       CopyImageMNU = new ToolStripMenuItem();
@@ -48,13 +47,15 @@ namespace SkyRoof
       splitContainer1.Panel1.SuspendLayout();
       splitContainer1.Panel2.SuspendLayout();
       splitContainer1.SuspendLayout();
-      ImagePanel.SuspendLayout();
+      ((System.ComponentModel.ISupportInitialize)ImageSplitContainer).BeginInit();
+      ImageSplitContainer.Panel1.SuspendLayout();
+      ImageSplitContainer.SuspendLayout();
       ((System.ComponentModel.ISupportInitialize)ImageBox).BeginInit();
       ImageMenu.SuspendLayout();
       SuspendLayout();
-      // 
+      //
       // SatNameLabel
-      // 
+      //
       SatNameLabel.Dock = DockStyle.Top;
       SatNameLabel.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
       SatNameLabel.Location = new Point(0, 0);
@@ -63,9 +64,9 @@ namespace SkyRoof
       SatNameLabel.TabIndex = 1;
       SatNameLabel.Text = "___";
       SatNameLabel.TextAlign = ContentAlignment.MiddleCenter;
-      // 
+      //
       // StatusLabel
-      // 
+      //
       StatusLabel.Dock = DockStyle.Top;
       StatusLabel.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
       StatusLabel.Location = new Point(0, 23);
@@ -74,9 +75,9 @@ namespace SkyRoof
       StatusLabel.TabIndex = 2;
       StatusLabel.Text = "___";
       StatusLabel.TextAlign = ContentAlignment.MiddleCenter;
-      // 
+      //
       // treeView1
-      // 
+      //
       treeView1.ContextMenuStrip = MenuStrip;
       treeView1.Dock = DockStyle.Fill;
       treeView1.FullRowSelect = true;
@@ -87,22 +88,22 @@ namespace SkyRoof
       treeView1.Size = new Size(247, 526);
       treeView1.TabIndex = 3;
       treeView1.AfterSelect += treeView1_AfterSelect;
-      // 
+      //
       // MenuStrip
-      // 
+      //
       MenuStrip.Items.AddRange(new ToolStripItem[] { ClearAllMNU });
       MenuStrip.Name = "ClearAllMNU";
       MenuStrip.Size = new Size(119, 26);
-      // 
+      //
       // ClearAllMNU
-      // 
+      //
       ClearAllMNU.Name = "ClearAllMNU";
       ClearAllMNU.Size = new Size(118, 22);
       ClearAllMNU.Text = "Clear All";
       ClearAllMNU.Click += ClearAllMNU_Click;
-      // 
+      //
       // richTextBox1
-      // 
+      //
       richTextBox1.BackColor = SystemColors.Window;
       richTextBox1.Dock = DockStyle.Fill;
       richTextBox1.Font = new Font("Courier New", 11.25F, FontStyle.Regular, GraphicsUnit.Point, 0);
@@ -126,22 +127,27 @@ namespace SkyRoof
       //
       // splitContainer1.Panel2
       //
-      splitContainer1.Panel2.Controls.Add(ImagePanel);
+      splitContainer1.Panel2.Controls.Add(ImageSplitContainer);
       splitContainer1.Panel2.Controls.Add(richTextBox1);
       splitContainer1.Size = new Size(669, 526);
       splitContainer1.SplitterDistance = 247;
       splitContainer1.TabIndex = 5;
       //
-      // ImagePanel
+      // ImageSplitContainer
       //
-      ImagePanel.Controls.Add(ImageBox);
-      ImagePanel.Controls.Add(ImageMetaBox);
-      ImagePanel.Dock = DockStyle.Fill;
-      ImagePanel.Location = new Point(0, 0);
-      ImagePanel.Name = "ImagePanel";
-      ImagePanel.Size = new Size(418, 526);
-      ImagePanel.TabIndex = 6;
-      ImagePanel.Visible = false;
+      ImageSplitContainer.Dock = DockStyle.Fill;
+      ImageSplitContainer.FixedPanel = FixedPanel.Panel2;
+      ImageSplitContainer.Location = new Point(0, 0);
+      ImageSplitContainer.Name = "ImageSplitContainer";
+      ImageSplitContainer.Orientation = Orientation.Horizontal;
+      //
+      // ImageSplitContainer.Panel1
+      //
+      ImageSplitContainer.Panel1.Controls.Add(ImageBox);
+      ImageSplitContainer.Size = new Size(418, 526);
+      ImageSplitContainer.SplitterDistance = 416;
+      ImageSplitContainer.TabIndex = 6;
+      ImageSplitContainer.Visible = false;
       //
       // ImageBox
       //
@@ -154,19 +160,6 @@ namespace SkyRoof
       ImageBox.SizeMode = PictureBoxSizeMode.Zoom;
       ImageBox.TabIndex = 0;
       ImageBox.TabStop = false;
-      //
-      // ImageMetaBox
-      //
-      ImageMetaBox.BackColor = SystemColors.Window;
-      ImageMetaBox.Dock = DockStyle.Bottom;
-      ImageMetaBox.Font = new Font("Courier New", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
-      ImageMetaBox.Location = new Point(0, 416);
-      ImageMetaBox.Multiline = true;
-      ImageMetaBox.Name = "ImageMetaBox";
-      ImageMetaBox.ReadOnly = true;
-      ImageMetaBox.ScrollBars = ScrollBars.Vertical;
-      ImageMetaBox.Size = new Size(418, 110);
-      ImageMetaBox.TabIndex = 1;
       //
       // ImageMenu
       //
@@ -187,9 +180,9 @@ namespace SkyRoof
       CopyImageMNU.Size = new Size(128, 22);
       CopyImageMNU.Text = "Copy";
       CopyImageMNU.Click += CopyImageMNU_Click;
-      // 
+      //
       // TelemetryPanel
-      // 
+      //
       AutoScaleDimensions = new SizeF(7F, 15F);
       AutoScaleMode = AutoScaleMode.Font;
       ClientSize = new Size(669, 572);
@@ -206,8 +199,9 @@ namespace SkyRoof
       splitContainer1.Panel2.ResumeLayout(false);
       ((System.ComponentModel.ISupportInitialize)splitContainer1).EndInit();
       splitContainer1.ResumeLayout(false);
-      ImagePanel.ResumeLayout(false);
-      ImagePanel.PerformLayout();
+      ImageSplitContainer.Panel1.ResumeLayout(false);
+      ((System.ComponentModel.ISupportInitialize)ImageSplitContainer).EndInit();
+      ImageSplitContainer.ResumeLayout(false);
       ((System.ComponentModel.ISupportInitialize)ImageBox).EndInit();
       ImageMenu.ResumeLayout(false);
       ResumeLayout(false);
@@ -222,9 +216,8 @@ namespace SkyRoof
     private SplitContainer splitContainer1;
     private ContextMenuStrip MenuStrip;
     private ToolStripMenuItem ClearAllMNU;
-    private Panel ImagePanel;
+    private SplitContainer ImageSplitContainer;
     private PictureBox ImageBox;
-    private TextBox ImageMetaBox;
     private ContextMenuStrip ImageMenu;
     private ToolStripMenuItem SaveImageMNU;
     private ToolStripMenuItem CopyImageMNU;
