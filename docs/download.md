@@ -4,7 +4,7 @@
 
 ### Current Version
 
-[SkyRoof v.1.38](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.38/SkyRoofSetup-v.1.38.zip)
+[SkyRoof v.1.39](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.39/SkyRoofSetup-v.1.39.zip)
 
 <br>
 
@@ -15,6 +15,11 @@ See [All Releases](https://github.com/VE3NEA/SkyRoof/releases)
 <br>
 
 ### Release Notes
+
+#### v.1.39
+
+- SSTV decoder added
+- multiple improvements in telemetry decoding
 
 #### v.1.38
 
