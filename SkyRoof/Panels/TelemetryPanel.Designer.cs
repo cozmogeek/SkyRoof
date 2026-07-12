@@ -37,11 +37,20 @@ namespace SkyRoof
       ClearAllMNU = new ToolStripMenuItem();
       richTextBox1 = new RichTextBox();
       splitContainer1 = new SplitContainer();
+      ImagePanel = new Panel();
+      ImageBox = new PictureBox();
+      ImageMetaBox = new TextBox();
+      ImageMenu = new ContextMenuStrip(components);
+      SaveImageMNU = new ToolStripMenuItem();
+      CopyImageMNU = new ToolStripMenuItem();
       MenuStrip.SuspendLayout();
       ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
       splitContainer1.Panel1.SuspendLayout();
       splitContainer1.Panel2.SuspendLayout();
       splitContainer1.SuspendLayout();
+      ImagePanel.SuspendLayout();
+      ((System.ComponentModel.ISupportInitialize)ImageBox).BeginInit();
+      ImageMenu.SuspendLayout();
       SuspendLayout();
       // 
       // SatNameLabel
@@ -103,23 +112,80 @@ namespace SkyRoof
       richTextBox1.Size = new Size(418, 526);
       richTextBox1.TabIndex = 4;
       richTextBox1.Text = "";
-      // 
+      //
       // splitContainer1
-      // 
+      //
       splitContainer1.Dock = DockStyle.Fill;
       splitContainer1.Location = new Point(0, 46);
       splitContainer1.Name = "splitContainer1";
-      // 
+      //
       // splitContainer1.Panel1
-      // 
+      //
       splitContainer1.Panel1.Controls.Add(treeView1);
-      // 
+      //
       // splitContainer1.Panel2
-      // 
+      //
+      splitContainer1.Panel2.Controls.Add(ImagePanel);
       splitContainer1.Panel2.Controls.Add(richTextBox1);
       splitContainer1.Size = new Size(669, 526);
       splitContainer1.SplitterDistance = 247;
       splitContainer1.TabIndex = 5;
+      //
+      // ImagePanel
+      //
+      ImagePanel.Controls.Add(ImageBox);
+      ImagePanel.Controls.Add(ImageMetaBox);
+      ImagePanel.Dock = DockStyle.Fill;
+      ImagePanel.Location = new Point(0, 0);
+      ImagePanel.Name = "ImagePanel";
+      ImagePanel.Size = new Size(418, 526);
+      ImagePanel.TabIndex = 6;
+      ImagePanel.Visible = false;
+      //
+      // ImageBox
+      //
+      ImageBox.BackColor = Color.Black;
+      ImageBox.ContextMenuStrip = ImageMenu;
+      ImageBox.Dock = DockStyle.Fill;
+      ImageBox.Location = new Point(0, 0);
+      ImageBox.Name = "ImageBox";
+      ImageBox.Size = new Size(418, 416);
+      ImageBox.SizeMode = PictureBoxSizeMode.Zoom;
+      ImageBox.TabIndex = 0;
+      ImageBox.TabStop = false;
+      //
+      // ImageMetaBox
+      //
+      ImageMetaBox.BackColor = SystemColors.Window;
+      ImageMetaBox.Dock = DockStyle.Bottom;
+      ImageMetaBox.Font = new Font("Courier New", 9F, FontStyle.Regular, GraphicsUnit.Point, 0);
+      ImageMetaBox.Location = new Point(0, 416);
+      ImageMetaBox.Multiline = true;
+      ImageMetaBox.Name = "ImageMetaBox";
+      ImageMetaBox.ReadOnly = true;
+      ImageMetaBox.ScrollBars = ScrollBars.Vertical;
+      ImageMetaBox.Size = new Size(418, 110);
+      ImageMetaBox.TabIndex = 1;
+      //
+      // ImageMenu
+      //
+      ImageMenu.Items.AddRange(new ToolStripItem[] { SaveImageMNU, CopyImageMNU });
+      ImageMenu.Name = "ImageMenu";
+      ImageMenu.Size = new Size(129, 48);
+      //
+      // SaveImageMNU
+      //
+      SaveImageMNU.Name = "SaveImageMNU";
+      SaveImageMNU.Size = new Size(128, 22);
+      SaveImageMNU.Text = "Save As...";
+      SaveImageMNU.Click += SaveImageMNU_Click;
+      //
+      // CopyImageMNU
+      //
+      CopyImageMNU.Name = "CopyImageMNU";
+      CopyImageMNU.Size = new Size(128, 22);
+      CopyImageMNU.Text = "Copy";
+      CopyImageMNU.Click += CopyImageMNU_Click;
       // 
       // TelemetryPanel
       // 
@@ -139,6 +205,10 @@ namespace SkyRoof
       splitContainer1.Panel2.ResumeLayout(false);
       ((System.ComponentModel.ISupportInitialize)splitContainer1).EndInit();
       splitContainer1.ResumeLayout(false);
+      ImagePanel.ResumeLayout(false);
+      ImagePanel.PerformLayout();
+      ((System.ComponentModel.ISupportInitialize)ImageBox).EndInit();
+      ImageMenu.ResumeLayout(false);
       ResumeLayout(false);
     }
 
@@ -151,5 +221,11 @@ namespace SkyRoof
     private SplitContainer splitContainer1;
     private ContextMenuStrip MenuStrip;
     private ToolStripMenuItem ClearAllMNU;
+    private Panel ImagePanel;
+    private PictureBox ImageBox;
+    private TextBox ImageMetaBox;
+    private ContextMenuStrip ImageMenu;
+    private ToolStripMenuItem SaveImageMNU;
+    private ToolStripMenuItem CopyImageMNU;
   }
 }

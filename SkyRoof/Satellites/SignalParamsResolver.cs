@@ -117,6 +117,17 @@ namespace SkyRoof.Satellites
       return ExtractFraming(framingString);
     }
 
+    /// <summary>True if the transmitter advertises SSTV anywhere in its mode/description strings. A mixed
+    /// transmitter (e.g. UmKA-1 alternating FSK telemetry and SSTV in one pass) classifies as
+    /// FSK in <see cref="ExtractyModulation"/>, so the SSTV capability is surfaced separately and the
+    /// SSTV decoder runs concurrently with the telemetry pipeline, each self-gating on its own signal.</summary>
+    public static bool HasSstv(SatnogsDbTransmitter? tx)
+    {
+      if (tx == null) return false;
+      string s = $"{tx.gr_sats?.modulation} {tx.description} {tx.mode} {tx.DownlinkMode}";
+      return s.Contains("SSTV", StringComparison.OrdinalIgnoreCase);
+    }
+
 
     /// <summary>Apply CCSDS-specific carry-through facts (block variant + satyaml overrides) to the
     /// already-classified <see cref="SignalParams"/>, resolving each fact first-non-null over the structured
