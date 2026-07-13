@@ -23,6 +23,10 @@ SkyRoof keeps all of its data in the **data folder**.
 
 - **Satellites.json** - the satellite database compiled from the downloaded data;
 
+- **transmitters-override.json** - hand-curated corrections to the transmitter
+    [signal parameters](satellite_data.md#signal-parameters). Ships with a default set that SkyRoof
+    keeps up to date; mark an entry `"read_only": true` to protect your own edits;
+
 - **cat_info.json** - lists the CAT capabilities of a generic simplex radio;
 
 - **wsjtx_wisdom.dat** - optimal FFT transform settings found by automatic testing.
@@ -44,5 +48,7 @@ SkyRoof keeps all of its data in the **data folder**.
 - **TelemetryDecodes** - decoded telemetry frames saved by the [Telemetry](telemetry_panel.md)
     panel, when the **Save to File** option is enabled in the
     [telemetry settings](setting_up_telemetry_decoding.md#decoder-settings). One file is created per day;
+- **SstvImages** - [SSTV images](recevie_sstv.md) decoded by the [Telemetry](telemetry_panel.md)
+    panel, saved automatically as PNG files with a JSON metadata sidecar;
 - **TelemetryRegistry** - the definitions used to decode raw telemetry frames into named values
     in the [Telemetry](telemetry_panel.md) panel.

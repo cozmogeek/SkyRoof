@@ -35,11 +35,9 @@ namespace SkyRoof
       DownloadsFolder = Path.Combine(DataFolder, "Downloads");
       Directory.CreateDirectory(DownloadsFolder);
 
-      // seed the user-editable transmitter overrides file from the embedded default on first run
+      // merge the embedded default transmitter overrides into the user-editable file, keeping user edits
       string txOverrideFile = Path.Combine(DataFolder, "transmitters-override.json");
-
-      //if (!File.Exists(txOverrideFile)) 
-        File.WriteAllBytes(txOverrideFile, Properties.Resources.transmitters_override);
+      MergeOverrideFile(txOverrideFile);
 
       JsonSettings.Converters.Add(new IsoDateTimeConverter { DateTimeFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ssK" });
 
@@ -331,11 +329,11 @@ namespace SkyRoof
       Log.Information($"satyaml: enriched {matched} transmitters");
     }
 
-    // Apply hand-curated GrSatsInfo overrides from Data\transmitters-override.json on top of the
-    // satyaml enrichment. The file maps a transmitter uuid to a partial GrSatsInfo object that lists
-    // only the fields to override; absent fields are left untouched (PopulateObject merges in place).
-    // This is how we supply data the SatNOGS DB lacks and gr-satellites has no satyaml entry for
-    // (e.g. FSK deviation), or correct wrong DB values (e.g. baud).
+    // Apply hand-curated GrSatsInfo overrides from Data\transmitters-override.json into the authoritative
+    // manual layer (tx.manual), which the resolver ranks above the satyaml enrichment. The file maps a
+    // transmitter uuid to a partial GrSatsInfo object that lists only the fields to override; absent fields
+    // are left untouched (PopulateObject merges in place). This is how we supply data the SatNOGS DB lacks
+    // and gr-satellites has no satyaml entry for (e.g. FSK deviation), or correct wrong DB values (e.g. baud).
     private void ImportTransmitterOverrides()
     {
       string path = Path.Combine(DataFolder, "transmitters-override.json");
@@ -359,11 +357,39 @@ namespace SkyRoof
           continue;
         }
 
-        tx.gr_sats ??= new GrSatsInfo();
-        JsonConvert.PopulateObject(fields.ToString(), tx.gr_sats);
+        tx.manual ??= new GrSatsInfo();
+        JsonConvert.PopulateObject(fields.ToString(), tx.manual);
         applied++;
       }
       Log.Information($"transmitter overrides: applied {applied} of {overrides.Count}");
+    }
+
+    // Merge the embedded default transmitters-override.json into the user-editable copy without clobbering
+    // user edits. Records are keyed by transmitter uuid: user-only records are kept, new shipped records are
+    // added, and a uuid present in both is refreshed from the shipped default unless the user has claimed it
+    // with "read_only": true, in which case the user's copy is kept. The file is rewritten in shipped order,
+    // with user-only records appended. read_only is a file-merge signal only and plays no part in resolution.
+    private void MergeOverrideFile(string path)
+    {
+      var shipped = JsonConvert.DeserializeObject<Dictionary<string, JObject>>(
+        System.Text.Encoding.UTF8.GetString(Properties.Resources.transmitters_override)) ?? new();
+
+      Dictionary<string, JObject> user = new();
+      if (File.Exists(path))
+        try { user = JsonConvert.DeserializeObject<Dictionary<string, JObject>>(File.ReadAllText(path)) ?? new(); }
+        catch (Exception ex) { Log.Warning($"transmitters-override.json is unreadable, refreshing from default: {ex.Message}"); }
+
+      // shipped order first; a shipped record is refreshed unless the user has claimed it with read_only
+      var merged = new Dictionary<string, JObject>();
+      foreach (var (uuid, shippedRec) in shipped)
+        merged[uuid] = user.TryGetValue(uuid, out var claimed) && claimed.Value<bool?>("read_only") == true
+          ? claimed : shippedRec;
+
+      // then append the records that exist only in the user file
+      foreach (var (uuid, userRec) in user)
+        if (!shipped.ContainsKey(uuid)) merged[uuid] = userRec;
+
+      File.WriteAllText(path, JsonConvert.SerializeObject(merged, Formatting.Indented));
     }
 
     // example: RS-44;44909;145.935-145.995;435.670-435.610;435.605 ;SSB CW;RS44;Operational

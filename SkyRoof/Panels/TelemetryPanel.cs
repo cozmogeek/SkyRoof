@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using Serilog;
 using SkyRoof.Satellites;
 using VE3NEA;
+using VE3NEA.SkySSTV;
 using VE3NEA.SkyTlm.Core;
 using VE3NEA.SkyTlm.Deframing;
 using VE3NEA.SkyTlm.Telemetry;
@@ -23,9 +24,12 @@ namespace SkyRoof
     private SignalParams? SignalParams;
     private TelemetryDecocder? Decoder;
     private SatnogsUploader? SatnogsUploader;
-    private TreeNode? CurrentPassNode;
     private TelemetryRegistry? TelemetryRegistry;
-    private TreeNode LastFrameNode;
+    // the most recently added tree node: either the pass node itself (before it has any leaves) or its
+    // last-added leaf. the pass node a frame/image belongs to is always this node's parent, or the node
+    // itself when it has no leaves yet — so a single field tracks both "current pass" and "last leaf"
+    private TreeNode? Current;
+    private TreeNode? CurrentPassNode => Current?.Parent ?? Current;
     private ILogger? FrameLogger;
     private DecodeSnapshot? CurrentDecode;
 
@@ -47,6 +51,35 @@ namespace SkyRoof
       }
     }
 
+    // one progressively-built SSTV image: the tree node's Tag, updated in place as ImageUpdated events
+    // re-render lines, finalized (and auto-saved) on ImageCompleted
+    private sealed class SstvImageInfo
+    {
+      internal readonly DecodeSnapshot Snapshot;
+      internal readonly DateTime FirstSeen = DateTime.Now;
+      internal SstvImageEvent Event;
+      internal Bitmap? Bitmap;
+      internal string? SavedPath;
+
+      internal SstvImageInfo(DecodeSnapshot snapshot, SstvImageEvent evt)
+      {
+        Snapshot = snapshot;
+        Event = evt;
+      }
+
+      internal string Describe()
+      {
+        return
+          $"Sat: {Snapshot.Transmitter?.Satellite?.name ?? "Unknown"}\r\n" +
+          $"Tx: {Snapshot.Transmitter?.description}\r\n" +
+          $"Mode: {Event.Mode}\r\n" +
+          $"VIS: {(Event.FromVis ? "decoded" : "not decoded, mode from sync cadence")}\r\n" +
+          $"Rows: {Event.ValidRows} of {Event.Image.Height}\r\n" +
+          $"Status: {(Event.Final ? "complete" : "receiving...")}\r\n" +
+          (SavedPath != null ? $"Saved: {SavedPath}\r\n" : "");
+      }
+    }
+
     internal class TxPassInfo
     {
       internal DateTime StartTime = DateTime.Now;
@@ -55,6 +88,7 @@ namespace SkyRoof
       internal SignalParams? SignalParams;
       internal int BurstCount = 0;
       internal int FrameCount = 0;
+      internal int ImageCount = 0;
       internal bool HasValidFrame = false;
 
       internal TxPassInfo(SatnogsDbTransmitter transmitter, int orbit)
@@ -78,7 +112,8 @@ namespace SkyRoof
           $"Tx: {Transmitter.description}\n" +
           $"Orbit: {Orbit}\n\n" +
           $"Bursts: {BurstCount}\n" +
-          $"Frames: {FrameCount}\n\n" +
+          $"Frames: {FrameCount}\n" +
+          $"Images: {ImageCount}\n\n" +
           $"Params:{paramsStr}";
       }
     }
@@ -114,6 +149,7 @@ namespace SkyRoof
     private void TelemetryPanel_Shown(object? sender, EventArgs e)
     {
       splitContainer1.SplitterDistance = ctx.Settings.Telemetry.SplitterDistance;
+      ImageSplitContainer.SplitterDistance = ctx.Settings.Telemetry.ImageSplitterDistance;
     }
 
     private void TelemetryPanel_FormClosing(object sender, FormClosingEventArgs e)
@@ -122,6 +158,7 @@ namespace SkyRoof
       ctx.TelemetryPanel = null;
       ctx.MainForm.TelemetryMNU.Checked = false;
       ctx.Settings.Telemetry.SplitterDistance = splitContainer1.SplitterDistance;
+      ctx.Settings.Telemetry.ImageSplitterDistance = ImageSplitContainer.SplitterDistance;
 
       // stop and free the decode pipeline (joins its worker thread and releases native FFTW memory)
       Decoder?.Dispose();
@@ -215,9 +252,20 @@ namespace SkyRoof
       {
         var snapshot = new DecodeSnapshot(Satellite, Transmitter, SignalParams!);
         CurrentDecode = snapshot;
-        Decoder = new(SignalParams!);
-        Decoder.Pipeline.FrameDecoded += frame => FrameDecodedHandler(frame, snapshot);
-        Decoder.Pipeline.BurstDecoded += report => BurstDecodedHandler(report, snapshot);
+        Decoder = new(SignalParams!, IsTelemetryDecodable(), IsSstvDecodable());
+        if (Decoder.Pipeline != null)
+        {
+          Decoder.Pipeline.FrameDecoded += frame => FrameDecodedHandler(frame, snapshot);
+          Decoder.Pipeline.BurstDecoded += report => BurstDecodedHandler(report, snapshot);
+        }
+        if (Decoder.Sstv != null)
+        {
+          // the image-id → tree-node map lives in the subscription closure, so images from a disposed
+          // decoder's flush can never collide with ids of the next decoder's images
+          var imageNodes = new Dictionary<int, TreeNode>();
+          Decoder.Sstv.ImageUpdated += evt => SstvImageHandler(evt, snapshot, imageNodes);
+          Decoder.Sstv.ImageCompleted += evt => SstvImageHandler(evt, snapshot, imageNodes);
+        }
       }
     }
 
@@ -225,14 +273,29 @@ namespace SkyRoof
       Modulation.FSK,
       Modulation.GFSK,
       Modulation.GMSK,
-      Modulation.BPSK
+      Modulation.BPSK,
+      Modulation.AFSK
     };
 
     private bool IsDecodable()
     {
+      return IsTelemetryDecodable() || IsSstvDecodable();
+    }
+
+    private bool IsTelemetryDecodable()
+    {
       if (SignalParams == null) return false;
       if (SignalParams.Framing == Framing.Unknown || SignalParams.Modulation == Modulation.Unknown || SignalParams.Baud == 0) return false;
       return SupportedModulations.Contains(SignalParams.Modulation);
+    }
+
+    // SSTV needs no framing or baud: the VIS header / sync cadence in the demod domain carries the mode.
+    // HasSstv also catches mixed FSK+SSTV transmitters (UmKA-1) that classify as FSK — for
+    // those BOTH decoders run concurrently and self-gate on their own signatures.
+    private bool IsSstvDecodable()
+    {
+      if (SignalParams == null) return false;
+      return SignalParams.Modulation == Modulation.SSTV || SignalParamsResolver.HasSstv(Transmitter);
     }
 
     private void BurstDecodedHandler(StreamingBurstReport report, DecodeSnapshot snapshot)
@@ -273,14 +336,11 @@ namespace SkyRoof
         CurrentPassNode!.ForeColor = Color.Empty;
       }
 
-      bool mustScroll = LastFrameNode == null || treeView1.SelectedNode == LastFrameNode;
-
       string addr = (snapshot.SignalParams.Framing == Framing.AX25G3RUH ? Ax25Address.Describe(frame.Bytes) : "") ?? "";
       string nodeText = $"{DateTime.Now:HH:mm:ss}  {frame.Length} bytes  {addr}";
-      LastFrameNode = new TreeNode(nodeText);
+      var frameNode = new TreeNode(nodeText);
       string frameText = BuildFrameText(frame, snapshot);
-      LastFrameNode.Tag = frameText;
-      CurrentPassNode.Nodes.Add(LastFrameNode);
+      frameNode.Tag = frameText;
       txPassInfo.FrameCount++;
 
       SaveFrameToFile(frame, addr, frameText, snapshot);
@@ -290,10 +350,8 @@ namespace SkyRoof
       // currently selected transmitter's decoder, so a late frame from a previous transmitter can't overwrite it.
       if (ReferenceEquals(snapshot, CurrentDecode)) UpdateParamsTooltip();
 
-      CurrentPassNode.Expand();
-
-      if (mustScroll) treeView1.SelectedNode = LastFrameNode;
-      else if (treeView1.SelectedNode == CurrentPassNode) richTextBox1.Text = txPassInfo.Describe();
+      AddLeaf(CurrentPassNode!, frameNode);
+      if (treeView1.SelectedNode == CurrentPassNode) richTextBox1.Text = txPassInfo.Describe();
     }
 
     /// <summary>Returns the current pass node's info, creating the pass node (grayed until the first valid
@@ -301,19 +359,42 @@ namespace SkyRoof
     private TxPassInfo EnsureCurrentPassNode(DecodeSnapshot snapshot)
     {
       int orbit = ctx.SdrPasses.GetNextPass(snapshot.Satellite)?.OrbitNumber ?? -1;
-      var txPassInfo = (TxPassInfo?)CurrentPassNode?.Tag;
+      var passNode = CurrentPassNode;
+      var txPassInfo = (TxPassInfo?)passNode?.Tag;
 
-      if (CurrentPassNode == null || !(txPassInfo!.IsSame(snapshot.Transmitter, orbit)))
+      if (passNode == null || !(txPassInfo!.IsSame(snapshot.Transmitter, orbit)))
       {
-        CurrentPassNode = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {snapshot.Transmitter.Satellite.name}  {snapshot.Transmitter.description}");
-        CurrentPassNode.ForeColor = Color.Gray;
+        passNode = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {snapshot.Transmitter.Satellite.name}  {snapshot.Transmitter.description}");
+        passNode.ForeColor = Color.Gray;
         txPassInfo = new TxPassInfo(snapshot.Transmitter, orbit);
         txPassInfo.SignalParams = snapshot.SignalParams;
-        CurrentPassNode.Tag = txPassInfo;
-        treeView1.Nodes.Add(CurrentPassNode);
+        passNode.Tag = txPassInfo;
+        treeView1.Nodes.Add(passNode);
+        TrackNewNode(passNode);
       }
 
       return txPassInfo!;
+    }
+
+    /// <summary>Selects the newly added node (pass or leaf) if the tree selection was tracking the previously
+    /// current node, or nothing was selected at all; otherwise leaves the user's selection alone. WinForms
+    /// scrolls a newly selected node into view automatically.</summary>
+    private void TrackNewNode(TreeNode newNode)
+    {
+      bool mustSelect = treeView1.SelectedNode == null || treeView1.SelectedNode == Current;
+      Current = newNode;
+      if (mustSelect) treeView1.SelectedNode = newNode;
+    }
+
+    /// <summary>Adds a leaf under the given pass node. Expands the pass node so the new leaf is visible, unless
+    /// the user deliberately collapsed it while it already had leaves and is still looking at its summary —
+    /// popping it open on every new frame/image would fight that choice.</summary>
+    private void AddLeaf(TreeNode passNode, TreeNode leaf)
+    {
+      bool keepCollapsed = !passNode.IsExpanded && passNode.Nodes.Count > 0 && treeView1.SelectedNode == passNode;
+      passNode.Nodes.Add(leaf);
+      if (!keepCollapsed) passNode.Expand();
+      TrackNewNode(leaf);
     }
 
     private string BuildFrameText(Frame frame, DecodeSnapshot snapshot)
@@ -349,6 +430,131 @@ namespace SkyRoof
         $"  Erasures: {frame.ErasedBytes}\n";
 
       return tlm + asc + hex + meta;
+    }
+
+
+
+
+    //----------------------------------------------------------------------------------------------
+    //                                      sstv images
+    //----------------------------------------------------------------------------------------------
+    // called on the decode worker thread (or on the UI thread when a disposed decoder flushes); the
+    // finalized image is auto-saved here, before marshaling, so a pass ending with the panel closing
+    // cannot lose it
+    private void SstvImageHandler(SstvImageEvent evt, DecodeSnapshot snapshot, Dictionary<int, TreeNode> imageNodes)
+    {
+      string? savedPath = evt.Final && evt.ValidRows > 0 ? SaveImageToFile(evt, snapshot) : null;
+      BeginInvoke(() => ShowImage(evt, snapshot, imageNodes, savedPath));
+    }
+
+    private void ShowImage(SstvImageEvent evt, DecodeSnapshot snapshot, Dictionary<int, TreeNode> imageNodes, string? savedPath)
+    {
+      var txPassInfo = EnsureCurrentPassNode(snapshot);
+
+      bool isNew = !imageNodes.TryGetValue(evt.ImageId, out TreeNode? node);
+      if (isNew)
+      {
+        node = new TreeNode();
+        node.Tag = new SstvImageInfo(snapshot, evt);
+        imageNodes[evt.ImageId] = node;
+        txPassInfo.ImageCount++;
+        AddLeaf(CurrentPassNode!, node);
+      }
+
+      // swap in the new reconstruction; dispose the previous bitmap only after the PictureBox lets go of it
+      var info = (SstvImageInfo)node!.Tag;
+      var oldBitmap = info.Bitmap;
+      info.Event = evt;
+      info.Bitmap = evt.Image.ToBitmap();
+      if (savedPath != null) info.SavedPath = savedPath;
+      node.Text = $"{info.FirstSeen:HH:mm:ss}  {evt.Mode}  {evt.ValidRows}/{evt.Image.Height} rows";
+      if (ImageBox.Image == oldBitmap) ImageBox.Image = info.Bitmap;
+      oldBitmap?.Dispose();
+
+      // an accepted image train is real content: un-gray the pass entry the way a valid frame does
+      if (!txPassInfo.HasValidFrame)
+      {
+        txPassInfo.HasValidFrame = true;
+        CurrentPassNode!.ForeColor = Color.Empty;
+      }
+
+      if (!evt.Final) StatusLabel.Text = "decoding...";
+
+      if (treeView1.SelectedNode == node) DisplayImageInfo(info);
+      else if (treeView1.SelectedNode == CurrentPassNode) richTextBox1.Text = txPassInfo.Describe();
+    }
+
+    private void DisplayImageInfo(SstvImageInfo info)
+    {
+      if (richTextBox1.Parent != ImageSplitContainer.Panel2)
+      {
+        richTextBox1.Parent = ImageSplitContainer.Panel2;
+        richTextBox1.Dock = DockStyle.Fill;
+      }
+      ImageSplitContainer.Visible = true;
+      ImageBox.Image = info.Bitmap;
+      richTextBox1.Text = info.Describe();
+    }
+
+    // switches the right panel back to plain telemetry text, undoing DisplayImageInfo's reparenting of
+    // richTextBox1 into the (now hidden) ImageSplitContainer
+    private void ShowTelemetryText()
+    {
+      if (richTextBox1.Parent != splitContainer1.Panel2)
+      {
+        richTextBox1.Parent = splitContainer1.Panel2;
+        richTextBox1.Dock = DockStyle.Fill;
+      }
+      ImageSplitContainer.Visible = false;
+    }
+
+    /// <summary>Auto-save the finalized image as PNG + JSON metadata sidecar under the user data folder.</summary>
+    private static string? SaveImageToFile(SstvImageEvent evt, DecodeSnapshot snapshot)
+    {
+      try
+      {
+        string folder = Path.Combine(Utils.GetUserDataFolder(), "SstvImages");
+        string sat = string.Concat((snapshot.Satellite?.name ?? "Unknown").Split(Path.GetInvalidFileNameChars()));
+        string path = Path.Combine(folder, $"{DateTime.Now:yyyyMMdd_HHmmss}_{sat}_{evt.Mode}_{evt.ImageId}.png");
+        evt.Image.SavePng(path);
+
+        var meta = new
+        {
+          Utc = DateTime.UtcNow,
+          Satellite = snapshot.Satellite?.name,
+          Norad = snapshot.Satellite?.norad_cat_id,
+          Transmitter = snapshot.Transmitter.description,
+          TransmitterUuid = snapshot.Transmitter.uuid,
+          Mode = evt.Mode.ToString(),
+          evt.FromVis,
+          evt.ValidRows,
+          evt.Image.Width,
+          evt.Image.Height
+        };
+        File.WriteAllText(Path.ChangeExtension(path, ".json"), JsonConvert.SerializeObject(meta, Formatting.Indented));
+        return path;
+      }
+      catch (Exception e)
+      {
+        Log.Error(e, "Failed to save SSTV image");
+        return null;
+      }
+    }
+
+    private void SaveImageMNU_Click(object sender, EventArgs e)
+    {
+      if (treeView1.SelectedNode?.Tag is not SstvImageInfo info) return;
+      using var dlg = new SaveFileDialog
+      {
+        Filter = "PNG Image|*.png",
+        FileName = $"{info.FirstSeen:yyyyMMdd_HHmmss}_{info.Event.Mode}.png"
+      };
+      if (dlg.ShowDialog() == DialogResult.OK) info.Event.Image.SavePng(dlg.FileName);
+    }
+
+    private void CopyImageMNU_Click(object sender, EventArgs e)
+    {
+      if (ImageBox.Image != null) Clipboard.SetImage(ImageBox.Image);
     }
 
 
@@ -403,6 +609,13 @@ namespace SkyRoof
       var node = e.Node;
       if (node == null) return;
 
+      if (node.Tag is SstvImageInfo imageInfo)
+      {
+        DisplayImageInfo(imageInfo);
+        return;
+      }
+
+      ShowTelemetryText();
       if (node.Level == 0)
       {
         var info = node.Tag as TxPassInfo;
@@ -414,8 +627,9 @@ namespace SkyRoof
 
     private void ClearAllMNU_Click(object sender, EventArgs e)
     {
-      LastFrameNode = null;
-      CurrentPassNode = null;
+      Current = null;
+      ShowTelemetryText();
+      ImageBox.Image = null;
       richTextBox1.Clear();
       treeView1.Nodes.Clear();
     }

@@ -21,6 +21,10 @@ namespace SkyRoof
     [DefaultValue(247)]
     public int SplitterDistance { get; set; } = 247;
 
+    [Browsable(false)]
+    [DefaultValue(416)]
+    public int ImageSplitterDistance { get; set; } = 416;
+
 
     public override string ToString() { return string.Empty; }
   }

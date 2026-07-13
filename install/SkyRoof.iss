@@ -90,6 +90,7 @@ Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\libquadmath-0.dll; DestDir
 Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\WsjtxUtils.WsjtxMessages.dll; DestDir: {app}; Flags: overwritereadonly ignoreversion
 Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\VE3NEA.Dsp.dll; DestDir: {app}; Flags: overwritereadonly ignoreversion
 Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\VE3NEA.SkyTlm.dll; DestDir: {app}; Flags: overwritereadonly ignoreversion
+Source: ..\SkyRoof\bin\x64\Release\net10.0-windows7.0\VE3NEA.SkySSTV.dll; DestDir: {app}; Flags: overwritereadonly ignoreversion
 
 
 [Icons]

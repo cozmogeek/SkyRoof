@@ -91,7 +91,7 @@ items:
       href: decode_telemetry.md
     - name: Recevie Images from NOAA-15 and NOAA-19
       href: recevie_images.md
-    - name: Recevie SSTV from ISS
+    - name: Receive SSTV Images
       href: recevie_sstv.md
     - name: Receive FSK & AFSK Telemetry
       href: fsk_afsk_telemetry.md

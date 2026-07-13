@@ -1,5 +1,6 @@
 using MathNet.Numerics;
 using VE3NEA;
+using VE3NEA.SkySSTV;
 using VE3NEA.SkyTlm.Core;
 
 namespace SkyRoof
@@ -7,15 +8,21 @@ namespace SkyRoof
   public class TelemetryDecocder : ThreadedProcessor<Complex32>
   {
     public StreamingPipeline? Pipeline;
+    public SstvDecoder? Sstv;
 
-    public TelemetryDecocder(SignalParams signalParams)
+    // mixed-mode dispatch: one transmitter may alternate FSK telemetry and SSTV in a pass
+    // (UmKA-1), so both decoders may run concurrently and self-gate — FSK bursts fail the SSTV VIS/sync
+    // test, SSTV segments present no valid FSK frames. The caller decides which decoders to build.
+    public TelemetryDecocder(SignalParams signalParams, bool telemetry, bool sstv)
     {
-      Pipeline = new StreamingPipeline(signalParams);
+      if (telemetry) Pipeline = new StreamingPipeline(signalParams);
+      if (sstv) Sstv = new SstvDecoder();
     }
 
     protected override void Process(DataEventArgs<Complex32> args)
     {
-      Pipeline?.Push(args.Data); 
+      Pipeline?.Push(args.Data);
+      Sstv?.Process(args.Data.AsSpan(0, args.Count));
     }
 
     public override void Dispose()
@@ -25,6 +32,12 @@ namespace SkyRoof
       base.Dispose();
       Pipeline?.Dispose();
       Pipeline = null;
+
+      // drain the decoder so the partially received image is finalized (ImageCompleted fires with the
+      // rows decoded before LOS / the transmitter switch), then free its filter chains
+      Sstv?.Flush();
+      Sstv?.Dispose();
+      Sstv = null;
     }
   }
 }
