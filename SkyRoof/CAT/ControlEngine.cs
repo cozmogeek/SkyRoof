@@ -264,6 +264,7 @@ namespace SkyRoof
     }
 
     byte[] buffer = new byte[65536];
+
     protected string ReadLine()
     {
       int totalRead = 0;

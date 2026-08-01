@@ -44,6 +44,7 @@ namespace SkyRoof
     public RecorderPanel? RecorderPanel;
     public QsoSchedulerPanel? QsoSchedulerPanel;
     public TelemetryPanel? TelemetryPanel;
+    public AutoSelectionPanel? AutoSelectionPanel;
 
     // devices
     public SoapySdrDevice? Sdr;
@@ -55,6 +56,7 @@ namespace SkyRoof
     public readonly OutputSoundcard<float> AudioVacSoundcard = new();
     public readonly OutputSoundcard<Complex32> IqVacSoundcard = new();
     public readonly Announcer Announcer = new();
+    public readonly AutoSelector AutoSelector = new();
     public UdpStreamSender UdpStreamSender = new();
     public AutoRecorder AutoRecorder;
     public readonly KissServer KissServer = new();
@@ -75,6 +77,7 @@ namespace SkyRoof
       RecorderPanel?.Close();
       QsoSchedulerPanel?.Close();
       TelemetryPanel?.Close();
+      AutoSelectionPanel?.Close();
     }
   }
 }

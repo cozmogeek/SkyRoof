@@ -4,7 +4,7 @@
 
 ### Current Version
 
-[SkyRoof v.1.39](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.39/SkyRoofSetup-v.1.39.zip)
+[SkyRoof v.1.46](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.46/SkyRoofSetup-v.1.46.zip)
 
 <br>
 
@@ -15,6 +15,43 @@ See [All Releases](https://github.com/VE3NEA/SkyRoof/releases)
 <br>
 
 ### Release Notes
+
+#### v.1.46
+
+- telemetry decoding supports new framings, Geoscan and AO-40 FEC
+- SSTV decoding improved
+- alternating telemetry and SSTV transmissions are now decoded
+
+#### v.1.45
+
+- improved SSTV decoding, eliminated long delay in image processing
+- added pass selection by max. elevation in satellite auto-selection
+
+#### v.1.44
+
+- a bug fixed in the SDR interface that was crashing the app
+
+#### v.1.43
+
+- added antenna tracking option in satellite auto selection
+- SSTV decoding improved
+- reduced overflows in SDR streaming
+
+#### v.1.42
+
+- fixed antenna direction indicator
+- fixed choppy audio
+
+#### v.1.41
+
+- Current Group list is no longer re-sorted every second
+- checkbox repaint in Auto Selection Schedule is fixed
+
+#### v.1.40
+
+- added auto selection of satellites by schedule
+- CAT band switching streamlined - contributed by [cozmogeek](https://github.com/cozmogeek)
+- improved telemetry decoding
 
 #### v.1.39
 

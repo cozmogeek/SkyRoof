@@ -16,7 +16,9 @@ namespace SkyRoof.Satellites
       // satyaml layer; satnogs is the base DB. The value fields below take the first layer that supplies a
       // non-null value (Field); modulation and framing instead give manual priority and then classify the
       // remaining sources as a single string (see ResolveModulation/ResolveFraming).
-      var je9pel = Je9pelParser.BuildJe9pelLayer(tx);
+      // the JE9PEL Mode text is per-satellite, not per-transmitter, so it is ambiguous once a satellite
+      // carries more than one transmitter — skip that layer entirely in the multi-transmitter case
+      var je9pel = tx.Satellite?.Transmitters.Count > 1 ? null : Je9pelParser.BuildJe9pelLayer(tx);
       var layers = new List<GrSatsInfo?> { tx.manual, tx.gr_sats, je9pel, BuildSatnogsLayer(tx) };
 
       // Baud: prefer the curated satyaml baudrate, then the SatNOGS DB field,
@@ -117,6 +119,26 @@ namespace SkyRoof.Satellites
       return ExtractFraming(framingString);
     }
 
+    // Modulations the telemetry pipeline can demodulate. Anything else (CW, SSTV, FM, QPSK) resolves to a
+    // valid SignalParams but builds no pipeline.
+    private readonly static Modulation[] SupportedModulations = {
+      Modulation.FSK,
+      Modulation.GFSK,
+      Modulation.GMSK,
+      Modulation.BPSK,
+      Modulation.AFSK
+    };
+
+    /// <summary>True if a resolved parameter set is complete enough, and its modulation supported, to build a
+    /// telemetry pipeline. One predicate shared by the panel's status ladder and the co-channel sibling ranker
+    /// (<see cref="CoChannel.RankedTelemetrySibling"/>), so both agree on what "decodable" means.</summary>
+    public static bool IsTelemetryDecodable(SignalParams? signalParams)
+    {
+      if (signalParams == null) return false;
+      if (signalParams.Framing == Framing.Unknown || signalParams.Modulation == Modulation.Unknown || signalParams.Baud == 0) return false;
+      return SupportedModulations.Contains(signalParams.Modulation);
+    }
+
     /// <summary>True if the transmitter advertises SSTV anywhere in its mode/description strings. A mixed
     /// transmitter (e.g. UmKA-1 alternating FSK telemetry and SSTV in one pass) classifies as
     /// FSK in <see cref="ExtractyModulation"/>, so the SSTV capability is surfaced separately and the
@@ -172,6 +194,21 @@ namespace SkyRoof.Satellites
       return null;
     }
 
+    /// <summary>Snap a measured baud rate or deviation to the round value it plainly approximates:
+    /// 9600.832 -> 9600. The pipeline reports what it measured, but what the operator reads - and what the
+    /// override file records - is a rate, so the digits that carry only measurement noise are dropped. The
+    /// step is a tenth of the value's magnitude (100 for a four-digit rate) and the snap is taken only
+    /// within 1% of it, so a genuinely odd rate such as 1250 Bd survives unchanged.</summary>
+    public static double RoundToStandard(double value)
+    {
+      if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0) return value;
+      double step = Math.Pow(10, Math.Floor(Math.Log10(value)) - 1);
+      double rounded = Math.Round(value / step) * step;
+      return Math.Abs(rounded - value) <= 0.01 * value ? rounded : value;
+    }
+
+    public static double? RoundToStandard(double? value) => value is double v ? RoundToStandard(v) : null;
+
     /// <summary>Map one DB <c>mode</c> / <c>description</c> / satyaml string to a deframing flavor.</summary>
     public static Framing ExtractFraming(string? text)
     {
@@ -179,12 +216,15 @@ namespace SkyRoof.Satellites
 
       // GOMspace AX100: satyaml framing strings "AX100 ASM+Golay" / "AX100 Reed Solomon", or DB
       // descriptions like "GMSK 4k8 AX.100 Mode 5". Mode 5 = ASM+Golay, Mode 6 = the RS framing; plain
-      // "AX100" defaults to ASM+Golay (the overwhelmingly common flavor in the wild).
+      // "AX100" defaults to ASM+Golay (the overwhelmingly common flavor in the wild). "AX100RS" is the
+      // enum's own name — accepted so the round-trip is not lossy (Je9pelParser stores Framing.ToString(),
+      // and without this the name collapses to AX100ASM, which is the hazard BuildSatnogsLayer warns about).
       if (s.Contains("AX100", StringComparison.OrdinalIgnoreCase) ||
           s.Contains("AX.100", StringComparison.OrdinalIgnoreCase))
       {
         bool rs = s.Contains("Reed", StringComparison.OrdinalIgnoreCase) ||
-               s.Contains("Mode 6", StringComparison.OrdinalIgnoreCase);
+               s.Contains("Mode 6", StringComparison.OrdinalIgnoreCase) ||
+               s.Contains("AX100RS", StringComparison.OrdinalIgnoreCase);
         return rs ? Framing.AX100RS : Framing.AX100ASM;
       }
 
@@ -194,8 +234,45 @@ namespace SkyRoof.Satellites
       if (s.Contains("USP", StringComparison.OrdinalIgnoreCase))
         return Framing.USP;
 
-      if (s.Contains("AX.25", StringComparison.OrdinalIgnoreCase) ||
-          s.Contains("G3RUH", StringComparison.OrdinalIgnoreCase))
+      // Geoscan/Sputnix CC1125 framing (satyaml "GEOSCAN", and the DB spells it out as "(Geoscan framing)").
+      // MUST precede the AX.25 test: all 14 of these transmitters are described as "AX.25 Beacon and
+      // Telemetry (Geoscan framing)", because an AX.25 UI frame rides *inside* the Geoscan frame — so the
+      // AX.25 label is true but at the wrong layer, and matching it first would deframe the outer link with
+      // the wrong framing and yield nothing.
+      if (s.Contains("GEOSCAN", StringComparison.OrdinalIgnoreCase))
+        return Framing.GEOSCAN;
+
+      // AO-40 FEC (satyaml "AO-40 FEC"; the DB never names it, so this resolves off the satyaml layer).
+      // Only the plain long-frame variant is implemented, so the variants that are NOT are excluded rather
+      // than silently mis-deframed: "AO-40 FEC short" (SMOG-P/ATL-1: 52-bit syncword, 51x52 interleaver,
+      // RS depth 1) and "AO-40 FEC CRC-16-ARC" (SMOG-1: adds an inner CRC that is kept in the frame, so the
+      // frame contents would differ even though the outer chain matches). "AO-40 uncoded" (AO-40, QO-100) is
+      // a different deframer entirely and does not contain "FEC", so it falls through on its own.
+      // "AO40FEC" is the enum's own name, which Je9pelParser stores as its layer's framing string — accept it
+      // so that round-trip is not lossy (compare the BuildSatnogsLayer note about "AX100RS" collapsing).
+      if (s.Contains("AO40FEC", StringComparison.OrdinalIgnoreCase) ||
+          (s.Contains("AO-40 FEC", StringComparison.OrdinalIgnoreCase) &&
+           !s.Contains("AO-40 FEC short", StringComparison.OrdinalIgnoreCase) &&
+           !s.Contains("AO-40 FEC CRC-16-ARC", StringComparison.OrdinalIgnoreCase)))
+        return Framing.AO40FEC;
+
+      // AX.25, plain or G3RUH-scrambled — one enum value because Ax25G3ruhDeframer runs both chains and
+      // FCS-gates them. The dotless "AX25" spelling is accepted too: it is the enum's own name
+      // ("AX25G3RUH", closing the same lossy-round-trip hole as the AX100RS and AO40FEC cases) and 11
+      // transmitters write it that way in the DB free text ("9k6 FSK AX25", "Mode U - AFSK 1k2 AX25").
+      // Safe against the more specific framings that carry AX.25 inside them (GEOSCAN) or name it in their
+      // own labels (AX100, USP) — every one of those is tested above and returns first.
+      // The exception is a framing satyaml names that we do NOT implement: there the DB's looser "AX25"
+      // text must not override it, or an active satellite gets confidently mislabelled and decoded with the
+      // wrong chain. Unknown is the honest answer. Only two such names collide today — verified by sweeping
+      // the cached DB — but the list is the weak spot here: it grows whenever gr-satellites adds a custom
+      // framing whose SatNOGS description also says AX25. The structural fix is layer-aware resolution
+      // (satyaml's framing field outranking the DB free text) rather than one combined string.
+      if (!s.Contains("ESEO", StringComparison.OrdinalIgnoreCase) &&
+          !s.Contains("YUSAT", StringComparison.OrdinalIgnoreCase) &&
+          (s.Contains("AX.25", StringComparison.OrdinalIgnoreCase) ||
+           s.Contains("AX25", StringComparison.OrdinalIgnoreCase) ||
+           s.Contains("G3RUH", StringComparison.OrdinalIgnoreCase)))
         return Framing.AX25G3RUH;
 
       // AMSAT-EA GENESIS family (HADES-SA SpinnyONE et al.): SatNOGS labels these "GENESIS FSK"/HADES.
@@ -231,6 +308,8 @@ namespace SkyRoof.Satellites
 
       if (s.Contains("SSTV")) return Modulation.SSTV;
       if (s.Contains("CW")) return Modulation.CW;
+      // analog FM last: "FM"/"FMN" are the only mode tokens containing "FM" (OFDM/MFSK/FFSK do not)
+      if (s.Contains("FM")) return Modulation.FM;
       return Modulation.Unknown;
     }
 

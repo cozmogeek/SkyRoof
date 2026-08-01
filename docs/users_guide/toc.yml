@@ -85,12 +85,12 @@ items:
       href: recorder_panel.md
     - name: Telemetry
       href: telemetry_panel.md
+    - name: Auto Selection
+      href: auto_selection_panel.md
   - name: How To
     items:
     - name: Decode Telemetry from PEARL-1C
       href: decode_telemetry.md
-    - name: Recevie Images from NOAA-15 and NOAA-19
-      href: recevie_images.md
     - name: Receive SSTV Images
       href: recevie_sstv.md
     - name: Receive FSK & AFSK Telemetry
