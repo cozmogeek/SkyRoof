@@ -78,56 +78,14 @@ namespace SkyRoof
 
       Path = pass == null ? null : Path = new(pass, ctx.Settings.Rotator, AntBearing);
 
-      ResetUi();
+       ResetUi();
        Advance();
-        ctx.MainForm.ShowRotatorStatus();
-        UpdatePathOptimizerForm();
-        return;
+       // show black LED if no satellite
+       ctx.MainForm.ShowRotatorStatus();
+       UpdatePathOptimizerForm();
+       toolTip1.SetToolTip(TrackCheckbox, $"Track {pass?.Satellite?.name} orbit {pass?.OrbitNumber}");
+  
       }
-
-      if (IsSamePass(Path?.Pass, pass))
-      {
-        TrackCheckbox.Enabled = ctx.Settings.Rotator.Enabled;
-        Advance();
-        ctx.MainForm.ShowRotatorStatus();
-        return;
-      }
-
-      bool keepTracking = TrackCheckbox.Checked;
-      Path = new OptimizedRotationPath(pass, ctx.Settings.Rotator, AntBearing);
-      ResetUi(keepTracking);
-      Advance();
-      ctx.MainForm.ShowRotatorStatus();
-      UpdatePathOptimizerForm();
-      toolTip1.SetToolTip(TrackCheckbox, $"Track {pass?.Satellite?.name} orbit {pass?.OrbitNumber}");
-    }
-
-    public void TrackPass(SatellitePass pass)
-    {
-      if (TrackCheckbox.Checked && IsSamePass(Path?.Pass, pass)) return;
-
-      SetPass(pass);
-      if (TrackCheckbox.Enabled && !TrackCheckbox.Checked)
-        TrackCheckbox.Checked = true;
-    }
-
-    public void Park()
-    {
-      if (engine == null || !ctx.Settings.Rotator.Enabled) return;
-
-      var sett = ctx.Settings.Rotator;
-      var bearing = new Bearing(sett.ParkAzimuth * Trig.RinD, sett.ParkElevation * Trig.RinD);
-      RotateTo(bearing);
-    }
-
-    public void TrackPass(SatellitePass pass)
-    {
-      if (TrackCheckbox.Checked && IsSamePass(Path?.Pass, pass)) return;
-
-      SetPass(pass);
-      if (TrackCheckbox.Enabled && !TrackCheckbox.Checked)
-        TrackCheckbox.Checked = true;
-    }
 
     public void Park()
     {
