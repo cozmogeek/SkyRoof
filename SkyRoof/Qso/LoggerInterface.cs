@@ -185,6 +185,8 @@ namespace SkyRoof
     (string satName, int orbit) LastSentInfo = ("", 0);
     private void CheckSendAmsatStatus(DateTime utc)
     {
+      if (!ctx.Settings.Telemetry.ReportToAmsat) return;
+
       // do not post old qso
       var minutesAgo = (DateTime.UtcNow - utc).TotalMinutes;
       if (minutesAgo < 0 || minutesAgo > 30) return;

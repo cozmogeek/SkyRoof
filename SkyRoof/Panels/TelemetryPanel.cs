@@ -1237,6 +1237,7 @@ namespace SkyRoof
     /// what un-grays the pass node — so the picture goes on rendering behind the dialog.</summary>
     private void CheckSendAmsatReport(DecodeSnapshot snapshot, SstvImageEvent evt)
     {
+      if (!ctx.Settings.Telemetry.ReportToAmsat) return;
       if (evt.ValidRows == 0) return;
 
       var sat = snapshot.Satellite;

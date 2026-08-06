@@ -17,6 +17,11 @@ namespace SkyRoof
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public SatnogsUploaderSettings SatnogsUploader { get; set; } = new();
 
+    [DisplayName("Report to AMSAT")]
+    [Description("Automatically offer to report reception to the AMSAT Satellite Status Page after decoding SSTV or logging a QSO. The Waterfall satellite menu still allows manual reports when this is off.")]
+    [DefaultValue(true)]
+    public bool ReportToAmsat { get; set; } = true;
+
     [Browsable(false)]
     [DefaultValue(247)]
     public int SplitterDistance { get; set; } = 247;
