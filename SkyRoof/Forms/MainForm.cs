@@ -303,6 +303,7 @@ namespace SkyRoof
 
       // record/playback taps should use the same pre-gain samples.
       ctx.RecorderPanel?.AddIqSamples(e);
+      ctx.AutoRecorder?.AddIqSamples(e.Data, e.Count);
       ctx.AutoSelector.AddIqSamples(e);
 
       // output-stream routing applies gain; don't mutate the shared buffer used by recording/playback.
@@ -320,6 +321,7 @@ namespace SkyRoof
 
       // record/playback taps should use the same pre-gain samples.
       ctx.RecorderPanel?.AddAudioSamples(e);
+      ctx.AutoRecorder?.AddAudioSamples(e.Data, e.Count);
       ctx.AutoSelector.AddAudioSamples(e);
 
       // output-stream routing applies gain; don't mutate the shared buffer used by recording/playback.

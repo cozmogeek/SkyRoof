@@ -66,8 +66,10 @@ namespace SkyRoof
         string suffix = wantAudio ? "" : "_IQ";
         fileName = Path.Combine(recordingsDir, $"{utc}Z_{safeSat}{el}{suffix}.wav");
 
-        // use 16-bit PCM for maximum player compatibility.
-        var format = new WaveFormat(SdrConst.AUDIO_SAMPLING_RATE, 16, wantAudio ? 1 : 2);
+        // audio: PCM16 for player compatibility; IQ: IEEE float32 stereo (cf32) for SatDump/tools.
+        WaveFormat format = wantAudio
+          ? new WaveFormat(SdrConst.AUDIO_SAMPLING_RATE, 16, 1)
+          : WaveFormat.CreateIeeeFloatWaveFormat(SdrConst.AUDIO_SAMPLING_RATE, 2);
         writer = new WaveFileWriter(fileName, format);
         this.satId = satId;
         isAudio = wantAudio;
@@ -165,27 +167,25 @@ namespace SkyRoof
       }
       if (w == null) return;
 
-      // stereo PCM16 => 4 bytes per IQ sample (I,Q)
-      int bytes = count * 2 * sizeof(short);
+      // stereo IEEE float32 => 8 bytes per IQ sample (I,Q) — SatDump cf32
+      int bytes = count * 2 * sizeof(float);
       byte[] buffer = ArrayPool<byte>.Shared.Rent(bytes);
 
       for (int i = 0; i < count; i++)
       {
-        float ir = Math.Clamp(data[i].Real, -1f, 1f) * PcmHeadroom;
-        float qr = Math.Clamp(data[i].Imaginary, -1f, 1f) * PcmHeadroom;
-        short i16 = (short)Math.Clamp(ir * short.MaxValue, short.MinValue, short.MaxValue);
-        short q16 = (short)Math.Clamp(qr * short.MaxValue, short.MinValue, short.MaxValue);
-
-        int o = i * 4;
-        buffer[o] = (byte)(i16 & 0xFF);
-        buffer[o + 1] = (byte)((i16 >> 8) & 0xFF);
-        buffer[o + 2] = (byte)(q16 & 0xFF);
-        buffer[o + 3] = (byte)((q16 >> 8) & 0xFF);
+        int o = i * 8;
+        WriteFloatLe(buffer, o, data[i].Real);
+        WriteFloatLe(buffer, o + 4, data[i].Imaginary);
       }
 
       var chunk = new WriteChunk { Buffer = buffer, Count = bytes };
       if (!w.TryWrite(chunk))
         ArrayPool<byte>.Shared.Return(buffer);
+    }
+
+    private static void WriteFloatLe(byte[] buffer, int offset, float value)
+    {
+      BitConverter.TryWriteBytes(buffer.AsSpan(offset, 4), value);
     }
 
     private async Task WriterLoop(CancellationToken ct)
