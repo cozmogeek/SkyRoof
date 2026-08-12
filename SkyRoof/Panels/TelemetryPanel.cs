@@ -3,14 +3,19 @@ using MathNet.Numerics;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Serilog;
 using SkyRoof.Satellites;
+using System.Globalization;
 using VE3NEA;
 using VE3NEA.SkyFM;
 using VE3NEA.SkySSTV;
+using VE3NEA.SkyTlm.Audio;
 using VE3NEA.SkyTlm.Core;
 using VE3NEA.SkyTlm.Deframing;
 using VE3NEA.SkyTlm.Discovery;
+using VE3NEA.SkyTlm.Imaging;
+using VE3NEA.SkyTlm.Imaging.Ssdv;
 using VE3NEA.SkyTlm.Telemetry;
 using WeifenLuo.WinFormsUI.Docking;
 
@@ -64,6 +69,9 @@ namespace SkyRoof
     private TelemetryDefinition? FormatOverride;
     private string? FormatOverrideId;
     private bool FormatValidated;
+    // set while the image/text splitter is being positioned from the saved settings, so that the resulting
+    // SplitterMoved event does not write back what it just read
+    private bool RestoringImageSplitter;
 
     // parameter discovery (discover_params_plan.md): the running search, the dialog it reports to, and the
     // count of frames decoded since a discovered set was applied — the evidence the operator saves on (§6.1).
@@ -91,10 +99,14 @@ namespace SkyRoof
     // the FM transcript currently shown in richTextBox1 (null while showing telemetry/SSTV) — routes the
     // click-to-play mouse handling to the right content
     private FmTranscriptInfo? CurrentFmTranscript;
-    // true when PlayFmClip found the shared speaker soundcard disabled and temporarily enabled it for the
-    // clip, mirroring RecordingManager.StartPlayback/StopPlayback; fires FmClipEndTimer to disable it again
-    private bool SpeakerEnabledForFmClip;
-    private System.Windows.Forms.Timer? FmClipEndTimer;
+    // the voice message currently shown in richTextBox1, routing the same click-to-play handling. A message
+    // is one clip rather than a list of lines, so there is no per-span routing to do — the pane either is a
+    // voice message or is not.
+    private VoiceMessageInfo? CurrentVoice;
+    // true when PlayAudioClip found the shared speaker soundcard disabled and temporarily enabled it for the
+    // clip, mirroring RecordingManager.StartPlayback/StopPlayback; fires ClipEndTimer to disable it again
+    private bool SpeakerEnabledForClip;
+    private System.Windows.Forms.Timer? ClipEndTimer;
 
     // Identity of the transmitter a decoder was built for, captured when the pipeline is created and bound to
     // that pipeline's event handlers. Frames surface on the decode worker thread, possibly after the user has
@@ -120,23 +132,51 @@ namespace SkyRoof
       }
     }
 
+    // The two kinds of image a tree leaf can hold: an SSTV frame-by-frame reconstruction and an SSDV /
+    // raw-JPEG one. They share only the three places that do not care which they are looking at — the
+    // right-hand pane, the image context menu and the tree selection handler — so the interface is what
+    // those need and nothing more. Everything about how the two arrive, and how they are written to disk,
+    // differs.
+    private interface IImageNodeInfo
+    {
+      Bitmap? Bitmap { get; }
+      string? SavedPath { get; }
+      string Describe();
+      // "Save Image As...": the dialog's filter and suggested name, and the write itself. SSTV saves the
+      // rendered pixels as PNG; an SSDV image saves the received JPEG file verbatim.
+      string SaveFilter { get; }
+      string SaveFileName { get; }
+      void SaveAs(string path);
+    }
+
     // one progressively-built SSTV image: the tree node's Tag, updated in place as ImageUpdated events
     // re-render lines, finalized (and auto-saved) on ImageCompleted
-    private sealed class SstvImageInfo
+    private sealed class SstvImageInfo : IImageNodeInfo
     {
       internal readonly DecodeSnapshot Snapshot;
       internal readonly DateTime FirstSeen = DateTime.Now;
       internal SstvImageEvent Event;
-      internal Bitmap? Bitmap;
-      internal string? SavedPath;
+      public Bitmap? Bitmap { get; set; }
+      public string? SavedPath { get; set; }
+
+      // The picture currently on display, which is the decoder's own image until the denoise dialog
+      // replaces it. Everything that shows, copies or writes the image reads this rather than
+      // Event.Image, so "Save Image As..." writes what the operator is looking at (denoise plan §8).
+      // Reset whenever a new event arrives, because a filtered rendering describes the reconstruction
+      // it was computed from and not the one that just replaced it.
+      internal RgbImage Rendering;
+
+      // how Rendering was produced, for the info pane; null while it is the unfiltered reconstruction
+      internal string? Filter;
 
       internal SstvImageInfo(DecodeSnapshot snapshot, SstvImageEvent evt)
       {
         Snapshot = snapshot;
         Event = evt;
+        Rendering = evt.Image;
       }
 
-      internal string Describe()
+      public string Describe()
       {
         return
           $"Sat: {Snapshot.Transmitter?.Satellite?.name ?? "Unknown"}\r\n" +
@@ -145,8 +185,121 @@ namespace SkyRoof
           $"VIS: {(Event.FromVis ? "decoded" : "not decoded, mode from sync cadence")}\r\n" +
           $"Rows: {Event.ValidRows} of {Event.Image.Height}\r\n" +
           $"Status: {(Event.Final ? "complete" : "receiving...")}\r\n" +
+          (Filter != null ? $"Filter: {Filter}\r\n" : "") +
           (SavedPath != null ? $"Saved: {SavedPath}\r\n" : "");
       }
+
+      public string SaveFilter => "PNG Image|*.png";
+      public string SaveFileName => $"{FirstSeen:yyyyMMdd_HHmmss}_{Event.Mode}.png";
+      public void SaveAs(string path) => Rendering.SavePng(path);
+    }
+
+    // one progressively-built SSDV / raw-JPEG image: the tree node's Tag, updated in place as fragments
+    // arrive, finalized (and auto-saved) when the assembler announces that nothing further is coming.
+    // SkyTlm hands out JPEG bytes rather than pixels — that is what keeps System.Drawing out of the
+    // library — so the decoding to a Bitmap happens here, in the app.
+    private sealed class SsdvImageInfo : IImageNodeInfo
+    {
+      internal readonly DecodeSnapshot Snapshot;
+      internal readonly DateTime FirstSeen = DateTime.Now;
+      // what this pass heard, and nothing else. It is what the tree label counts and what is written to
+      // disk, so the sidecar stays a record of one reception rather than a record of a merge.
+      internal ImageProduct PassProduct;
+      // the same picture rebuilt from this pass plus the archived receptions in Archived, or null when
+      // the operator has not asked for that. Recomputed as fragments arrive, so it keeps filling in live.
+      internal ImageProduct? MergedProduct;
+      // earlier receptions of this picture, read out of their sidecars and cached on the first combine so
+      // that re-merging on every arriving fragment costs no disk
+      internal List<ArchivedPass>? Archived;
+      // whether the merged reconstruction is the one on display. Everything that shows or saves the image
+      // reads Product, so this one flag is the whole toggle.
+      internal bool Combined;
+      // the assembler has announced this image as over. Not the same as Product.Complete: a pass that ends
+      // mid-image finalizes what arrived, which off air is the normal case rather than the exception.
+      internal bool Final;
+      public Bitmap? Bitmap { get; set; }
+      public string? SavedPath { get; set; }
+
+      internal SsdvImageInfo(DecodeSnapshot snapshot, ImageProduct product)
+      {
+        Snapshot = snapshot;
+        PassProduct = product;
+      }
+
+      /// <summary>The reconstruction currently on display: the merge when combining is on, this pass's
+      /// otherwise. Toggling off is exact rather than approximate — the pass product was never altered.</summary>
+      internal ImageProduct Product => Combined && MergedProduct != null ? MergedProduct : PassProduct;
+
+      public string Describe()
+      {
+        return
+          $"Sat: {Snapshot.Transmitter?.Satellite?.name ?? "Unknown"}\r\n" +
+          $"Tx: {Snapshot.Transmitter?.description}\r\n" +
+          $"Image: {Product.ImageId}\r\n" +
+          (Product.Source != null ? $"Source: {Product.Source}\r\n" : "") +
+          $"Size: {Product.Width} x {Product.Height}\r\n" +
+          // the fragment counts are shown as two lines rather than one merged number: what this pass
+          // heard is a fact about the reception, and what the combination adds is a fact about the
+          // archive, and an operator judging the pass needs to see them apart.
+          $"Fragments: {PassProduct.FragmentsReceived} of {PassProduct.FragmentsExpected}\r\n" +
+          (Combined && MergedProduct != null
+            ? $"Combined: {MergedProduct.FragmentsReceived} of {MergedProduct.FragmentsExpected}" +
+              $" (with {Archived!.Count} earlier {(Archived.Count == 1 ? "pass" : "passes")})\r\n"
+            : "") +
+          // only the raw-JPEG family has such a boundary: one lost fragment desynchronizes the entropy
+          // stream and everything past it is noise, so the operator has to be told where truth stops.
+          // -1 means the concept does not apply, which is SSDV, where a lost packet costs its own MCUs
+          // and nothing else.
+          (Product.FirstGapOffset >= 0 ? $"Intact to: {Product.FirstGapOffset} bytes\r\n" : "") +
+          $"Status: {(Product.Complete ? "complete" : Final ? "incomplete" : "receiving...")}\r\n" +
+          (SavedPath != null ? $"Saved: {SavedPath}\r\n" : "");
+      }
+
+      public string SaveFilter => "JPEG Image|*.jpg";
+      public string SaveFileName => $"{FirstSeen:yyyyMMdd_HHmmss}_{Product.ImageId}.jpg";
+      public void SaveAs(string path) => File.WriteAllBytes(path, Product.Jpeg);
+    }
+
+    // One received codec2 voice message: the tree node's Tag, updated in place as sub-frames arrive and
+    // finalized (and auto-saved) when the assembler announces the message is over. Deliberately NOT an
+    // IImageNodeInfo: that interface is built around a Bitmap and a picture pane, and a voice node has
+    // neither — what it shares with the images is the shape of the lifecycle, not the presentation.
+    private sealed class VoiceMessageInfo
+    {
+      internal readonly DecodeSnapshot Snapshot;
+      internal readonly DateTime FirstSeen = DateTime.Now;
+      internal VoiceProduct Product;
+      // the assembler will send nothing further for this message. Off air the normal case is a message the
+      // pass ended in the middle of, so this is not the same as having heard the whole thing — and unlike
+      // an image there is no way to know how much was missed, because nothing on air says how long a
+      // message is.
+      internal bool Final;
+      internal string? SavedPath;
+
+      internal VoiceMessageInfo(DecodeSnapshot snapshot, VoiceProduct product)
+      {
+        Snapshot = snapshot;
+        Product = product;
+      }
+
+      internal string Describe()
+      {
+        return
+          $"Sat: {Snapshot.Transmitter?.Satellite?.name ?? "Unknown"}\r\n" +
+          $"Tx: {Snapshot.Transmitter?.description}\r\n" +
+          $"Duration: {Product.DurationSeconds:0.0} s\r\n" +
+          // "of N" is deliberately absent: N is the span of what arrived, not the length of what was sent,
+          // and presenting it as a denominator would claim knowledge the downlink does not carry.
+          $"Sub-frames: {Product.SubFramesReceived} received, {Product.SubFramesExpected} spanned\r\n" +
+          $"Numbered: {Product.FirstNumber}..{Product.LastNumber}\r\n" +
+          $"Gaps: {(Product.Complete ? "none" : $"{Product.SubFramesExpected - Product.SubFramesReceived} sub-frames, played as silence")}\r\n" +
+          $"Status: {(Final ? "complete" : "receiving...")}\r\n" +
+          (SavedPath != null ? $"Saved: {SavedPath}\r\n" : "") +
+          "\r\nClick here to play.";
+      }
+
+      internal string SaveFileName =>
+        $"{FirstSeen:yyyyMMdd_HHmmss}_{Snapshot.Satellite?.name ?? "Unknown"}_voice.wav";
     }
 
     // one FM-speech transcript, the Tag of the single "FM Speech" leaf node (§10.3): the pass's decoded
@@ -272,7 +425,16 @@ namespace SkyRoof
     private void TelemetryPanel_Shown(object? sender, EventArgs e)
     {
       splitContainer1.SplitterDistance = ctx.Settings.Telemetry.SplitterDistance;
-      ImageSplitContainer.SplitterDistance = ctx.Settings.Telemetry.ImageSplitterDistance;
+      // ImageSplitContainer is still hidden here, so it has not been laid out to its real size yet and its
+      // splitter cannot be positioned. It is restored when it first becomes visible, see DisplayImageInfo
+    }
+
+    private void ImageSplitContainer_SplitterMoved(object? sender, SplitterEventArgs e)
+    {
+      // Panel2 is the fixed panel, so its height changes only when the user drags the splitter, not when
+      // the panel is resized. That makes this the right moment, and the right quantity, to remember
+      if (ImageSplitContainer.Visible && !RestoringImageSplitter)
+        ctx.Settings.Telemetry.ImageTextHeight = ImageSplitContainer.Panel2.Height;
     }
 
     private void TelemetryPanel_FormClosing(object sender, FormClosingEventArgs e)
@@ -281,7 +443,6 @@ namespace SkyRoof
       ctx.TelemetryPanel = null;
       ctx.MainForm.TelemetryMNU.Checked = false;
       ctx.Settings.Telemetry.SplitterDistance = splitContainer1.SplitterDistance;
-      ctx.Settings.Telemetry.ImageSplitterDistance = ImageSplitContainer.SplitterDistance;
 
       // stop and free the decode pipeline (joins its worker thread and releases native FFTW memory)
       Decoder?.Dispose();
@@ -289,7 +450,7 @@ namespace SkyRoof
       CurrentDecode = null;
 
       // stop any click-to-play clip, then free the shared FM speech engine (the decoder above no longer uses it)
-      StopFmClip();
+      StopAudioClip();
       FmSpeechEngine?.Dispose();
       FmSpeechEngine = null;
 
@@ -362,14 +523,15 @@ namespace SkyRoof
       UpdateParamsTooltip();
     }
 
-    // Resolve the co-channel transmitter that drives telemetry when the selection cannot (§2.2 row 2): an
-    // SSTV selection borrows the top-ranked decodable transmitter on its own downlink. A selection that is
-    // telemetry-decodable already is its own source and needs no sibling, and a CW / FM / unsupported one
-    // deliberately gets none — SSTV is the only pairing this feature makes.
+    // Resolve the co-channel transmitter that drives telemetry when the selection cannot (§2.2 rows 2
+    // and 4): an SSTV or SSDV selection borrows the top-ranked decodable transmitter on its own downlink.
+    // A selection that is telemetry-decodable already is its own source and needs no sibling, and a CW /
+    // FM / unsupported one deliberately gets none — those two are the only pairings this feature makes.
     private void ResolveSibling()
     {
       Sibling = null;
-      if (IsTelemetryDecodable() || !IsSstvDecodable()) return;
+      if (IsTelemetryDecodable()) return;
+      if (!IsSstvDecodable() && !SignalParamsResolver.HasSsdv(Transmitter)) return;
 
       var tx = CoChannel.RankedTelemetrySibling(Satellite, Transmitter);
       if (tx != null && SignalParamsResolver.Resolve(tx) is SignalParams p) Sibling = (tx, p);
@@ -540,11 +702,36 @@ namespace SkyRoof
           telemetrySource?.Params ?? SignalParams!, ctx.SdrPasses.GetNextPass(Satellite)?.OrbitNumber ?? -1);
         var sstvSnapshot = SstvSnapshot(snapshot);
         CurrentDecode = snapshot;
-        Decoder = new(snapshot.SignalParams, telemetry, sstv, fmEngine, detectParams);
+        Decoder = new(snapshot.SignalParams, snapshot.Satellite?.norad_cat_id, telemetry, sstv, fmEngine, detectParams);
         if (Decoder.Pipeline != null)
         {
-          Decoder.Pipeline.FrameDecoded += frame => FrameDecodedHandler(frame, snapshot);
+          // the image assembler is fed from the frame handler, and is captured here rather than read off
+          // the Decoder field when a frame surfaces: by then the field may already hold the next
+          // transmitter's decoder, and this decoder's frames must never reach that one's assembler.
+          var images = Decoder.Images;
+          var voice = Decoder.Voice;
+          Decoder.Pipeline.FrameDecoded += frame => FrameDecodedHandler(frame, snapshot, images, voice);
           Decoder.Pipeline.BurstDecoded += report => BurstDecodedHandler(report, snapshot);
+        }
+        if (Decoder.Images != null)
+        {
+          // the image-id → tree-node map lives in the subscription closure, the same way the SSTV one
+          // does, so an image finalized by a disposed decoder's flush can never collide with an id of the
+          // next decoder's images. Images ride the telemetry frames, so they carry the TELEMETRY
+          // snapshot's identity — there is no third snapshot here.
+          var imageNodes = new Dictionary<int, TreeNode>();
+          Decoder.Images.ImageUpdated += product => SsdvImageHandler(product, snapshot, imageNodes, false);
+          Decoder.Images.ImageCompleted += product => SsdvImageHandler(product, snapshot, imageNodes, true);
+        }
+        if (Decoder.Voice != null)
+        {
+          // one node per message, keyed the way the images are — but a voice message has no id of its own,
+          // so the key is the message's first sub-frame number, which is what the assembler segments on and
+          // is stable for the life of a message. The closure keeps a disposed decoder's flush out of the
+          // next decoder's nodes, exactly as above.
+          var voiceNodes = new Dictionary<int, TreeNode>();
+          Decoder.Voice.VoiceUpdated += product => VoiceMessageHandler(product, snapshot, voiceNodes, false);
+          Decoder.Voice.VoiceCompleted += product => VoiceMessageHandler(product, snapshot, voiceNodes, true);
         }
         // the detection-only branch exists for the search alone: its bursts go to the session and nowhere
         // else — no frames, no tree entry, no status label, because nothing here was decoded.
@@ -571,7 +758,7 @@ namespace SkyRoof
 
     private bool IsDecodable()
     {
-      return IsTelemetryDecodable() || IsSstvDecodable() || IsFmDecodable();
+      return IsTelemetryDecodable() || IsSstvDecodable() || IsSsdvDecodable() || IsFmDecodable();
     }
 
     // FM voice is decodable to a speech transcript (§10) when the transmitter's mode is FM. Whether the
@@ -593,6 +780,28 @@ namespace SkyRoof
     {
       if (SignalParams == null) return false;
       return SignalParams.Modulation == Modulation.SSTV || SignalParamsResolver.HasSstv(Transmitter);
+    }
+
+    // §2.2 row 4: an SSDV row is not a transmitter at all but a payload type carried inside a telemetry
+    // stream — HADES-SA's "SSDV" row and its "FSK 800 bps" row are the same 436.875 MHz signal — so it
+    // resolves to Modulation.Unknown and can never build a pipeline of its own. Yet it is the row an
+    // operator naturally picks, and it must not be a dead end: it decodes whenever the co-channel sibling
+    // that actually carries it does, which is exactly what makes the selection worth calling decodable.
+    // Whether that sibling's frames really yield images is the assembler factory's answer, not a mode
+    // string's — see IsImagingWanted.
+    private bool IsSsdvDecodable()
+    {
+      return SignalParamsResolver.HasSsdv(Transmitter) && TelemetrySource != null;
+    }
+
+    // Whether the resolved telemetry source's frames carry images this build can reconstruct. Asked of the
+    // factory, which is the single place that maps a framing to an assembler, so the status line cannot
+    // drift from what the decoder actually builds. It allocates one throwaway assembler per call, which is
+    // a small object and is only asked on a selection or horizon change.
+    private bool IsImagingWanted()
+    {
+      return TelemetrySource is { } source
+        && ImageAssemblerFactory.Create(source.Params, Satellite?.norad_cat_id) != null;
     }
 
     // §2.2: the SSTV branch runs whenever ANY transmitter on this downlink advertises SSTV, whatever is
@@ -637,10 +846,20 @@ namespace SkyRoof
        );
     }
 
-    private void FrameDecodedHandler(Frame frame, DecodeSnapshot snapshot)
+    private void FrameDecodedHandler(Frame frame, DecodeSnapshot snapshot, IImageAssembler? images,
+      IAudioAssembler? voice)
     {
       ctx.KissServer.SendToAll(frame);
       if (snapshot.Satellite?.norad_cat_id is int norad) SatnogsUploader?.Submit(frame, norad);
+      // Images ride the telemetry frames, so every frame is offered unconditionally and the assembler's
+      // own source parser drops the ones that are not image fragments — on HADES-SA, where the SSDV
+      // packets are interleaved with telemetry on one downlink, that is most of them. Re-transcoding the
+      // whole image per accepted fragment costs microseconds, so this stays on the decode thread.
+      images?.Push(frame);
+      // voice rides the same frames as images, and is offered on the same terms — the assembler's own gate
+      // drops everything that is not a codec2 sub-frame, which on this downlink is most frames. Re-decoding
+      // the whole message per sub-frame is under a millisecond, so it too stays on the decode thread.
+      voice?.Push(frame);
       BeginInvoke(() =>
       {
         AddFrame(frame, snapshot);
@@ -1115,12 +1334,32 @@ namespace SkyRoof
         }
       }
 
+      // a GEOSCAN frame carries a header we can name even when it is not telemetry: the sending satellite,
+      // the message type, and, on an image frame, where its bytes belong in the picture. Empty for the AX.25
+      // beacon flavor of the same downlink, which the address and the telemetry fields already describe.
+      string geo = "";
+      if (snapshot.SignalParams.Framing == Framing.GEOSCAN)
+        geo = string.Join("", GeoscanHeader.Describe(frame.Bytes).Select(f => $"  {f.Name}: {f.Value}\n"));
+
+      // an SSDV packet carries a CRC-32 and RS of its own, and the framings that carry it — HADES, AO-40
+      // FEC — carry no frame CRC at all, so the "CRC:" line below reads "n/a" on precisely the frames whose
+      // payload can be checked. Off air that is the difference between "no image because the satellite sent
+      // none" and "no image because none of the packets survived the pass", which the frame list cannot show.
+      string ssdvMeta = ImageAssemblerFactory.CheckImagePacket(
+        snapshot.SignalParams, snapshot.Satellite?.norad_cat_id, frame) switch
+      {
+        { Ok: true, CorrectedBytes: 0 } => "  SSDV packet: CRC OK\n",
+        { Ok: true } check => $"  SSDV packet: CRC OK, {check.CorrectedBytes} RS corrections\n",
+        { Ok: false } => "  SSDV packet: CRC FAIL\n",
+        null => ""
+      };
+
       string tlm = "";
-      if (addr.Length > 0 || fields.Length > 0)
+      if (addr.Length > 0 || geo.Length > 0 || fields.Length > 0)
       {
         tlm = "PAYLOAD:\n";
         if (addr.Length > 0) tlm += $"  Address: {addr}\n";
-        tlm += fields + "\n";
+        tlm += geo + fields + "\n";
       }
 
       // ASCII and HEX are shown over the payload only — any header address bytes are removed and the HEX
@@ -1143,6 +1382,7 @@ namespace SkyRoof
         $"  CFO: {frame.CfoHz:F1} Hz\n" +
         $"  SNR: {frame.SnrDb:F1} dB\n" +
         $"  CRC: {frame.CrcValid switch { true => "OK", false => "FAIL", null => "n/a" }}\n" +
+        ssdvMeta +
         $"  Corrections: {frame.CorrectedBits}\n" +
         $"  Erasures: {frame.ErasedBytes}\n\n" +
         DescribeSignalParamsMeta(snapshot);
@@ -1193,7 +1433,7 @@ namespace SkyRoof
       bool isNew = !imageNodes.TryGetValue(evt.ImageId, out TreeNode? node);
       if (isNew)
       {
-        node = new TreeNode();
+        node = new TreeNode { ContextMenuStrip = ImageMenu };
         node.Tag = new SstvImageInfo(snapshot, evt);
         imageNodes[evt.ImageId] = node;
         txPassInfo.ImageCount++;
@@ -1204,6 +1444,9 @@ namespace SkyRoof
       var info = (SstvImageInfo)node!.Tag;
       var oldBitmap = info.Bitmap;
       info.Event = evt;
+      // the new reconstruction is what is now on display; any filtered rendering described the previous one
+      info.Rendering = evt.Image;
+      info.Filter = null;
       info.Bitmap = evt.Image.ToBitmap();
       if (savedPath != null) info.SavedPath = savedPath;
       node.Text = $"{info.FirstSeen:HH:mm:ss}  {evt.Mode}  {evt.ValidRows}/{evt.Image.Height} rows";
@@ -1256,14 +1499,18 @@ namespace SkyRoof
       AmsatReportDialog.SendReport(ctx, sat, "SSTV");
     }
 
-    private void DisplayImageInfo(SstvImageInfo info)
+    private void DisplayImageInfo(IImageNodeInfo info)
     {
       if (richTextBox1.Parent != ImageSplitContainer.Panel2)
       {
         richTextBox1.Parent = ImageSplitContainer.Panel2;
         richTextBox1.Dock = DockStyle.Fill;
       }
+      bool wasHidden = !ImageSplitContainer.Visible;
       ImageSplitContainer.Visible = true;
+      // making it visible is what finally docks it to its real size, so this is the first moment at which
+      // the saved splitter position can be applied
+      if (wasHidden) RestoreImageSplitter();
       ImageBox.Image = info.Bitmap;
       richTextBox1.Text = info.Describe();
     }
@@ -1278,6 +1525,21 @@ namespace SkyRoof
         richTextBox1.Dock = DockStyle.Fill;
       }
       ImageSplitContainer.Visible = false;
+    }
+
+    // positions the image/text splitter so that the text sub-panel gets the height the user left it at
+    private void RestoreImageSplitter()
+    {
+      int available = ImageSplitContainer.Height - ImageSplitContainer.SplitterWidth;
+      int distance = available - ctx.Settings.Telemetry.ImageTextHeight;
+      distance = Math.Clamp(distance, ImageSplitContainer.Panel1MinSize, available - ImageSplitContainer.Panel2MinSize);
+      if (distance <= 0) return;
+
+      // a distance that had to be clamped because the panel is too small must not overwrite the setting,
+      // the user's height is still the one to use once the panel is large enough again
+      RestoringImageSplitter = true;
+      try { ImageSplitContainer.SplitterDistance = distance; }
+      finally { RestoringImageSplitter = false; }
     }
 
     /// <summary>Auto-save the finalized image as PNG + JSON metadata sidecar under the user data folder.</summary>
@@ -1315,13 +1577,9 @@ namespace SkyRoof
 
     private void SaveImageMNU_Click(object sender, EventArgs e)
     {
-      if (treeView1.SelectedNode?.Tag is not SstvImageInfo info) return;
-      using var dlg = new SaveFileDialog
-      {
-        Filter = "PNG Image|*.png",
-        FileName = $"{info.FirstSeen:yyyyMMdd_HHmmss}_{info.Event.Mode}.png"
-      };
-      if (dlg.ShowDialog() == DialogResult.OK) info.Event.Image.SavePng(dlg.FileName);
+      if (treeView1.SelectedNode?.Tag is not IImageNodeInfo info) return;
+      using var dlg = new SaveFileDialog { Filter = info.SaveFilter, FileName = info.SaveFileName };
+      if (dlg.ShowDialog() == DialogResult.OK) info.SaveAs(dlg.FileName);
     }
 
     private void CopyImageMNU_Click(object sender, EventArgs e)
@@ -1329,24 +1587,575 @@ namespace SkyRoof
       if (ImageBox.Image != null) Clipboard.SetImage(ImageBox.Image);
     }
 
-    // gray the "Open in Viewer" item until the selected image has been auto-saved to a file on disk
+    // Post-filter a completed image (denoise plan §8). The dialog filters evt.Planes — the raw, unfiltered
+    // reconstruction the event carries alongside the picture — so it always starts from the original however
+    // many times it is applied, and choosing None is an exact undo rather than an inverse filter.
+    private void DenoiseImageMNU_Click(object sender, EventArgs e)
+    {
+      if (treeView1.SelectedNode?.Tag is not SstvImageInfo info || info.Event.Planes is not { } planes) return;
+
+      using var dlg = new SstvDenoiseDialog();
+      string caption = $"{info.Snapshot.Satellite?.name ?? "Unknown"}  {info.FirstSeen:HH:mm:ss}  {info.Event.Mode}";
+      if (dlg.Open(planes, caption, this) != DialogResult.OK) return;
+
+      info.Rendering = dlg.Result;
+      info.Filter = DescribeFilter(dlg.Options);
+
+      var oldBitmap = info.Bitmap;
+      info.Bitmap = info.Rendering.ToBitmap();
+      if (ImageBox.Image == oldBitmap) ImageBox.Image = info.Bitmap;
+      oldBitmap?.Dispose();
+
+      // the auto-saved PNG is the pass's record of this image, so it follows the display rather than
+      // preserving a rendering the operator has just rejected
+      if (info.SavedPath != null)
+      {
+        try { info.Rendering.SavePng(info.SavedPath); }
+        catch (Exception ex) { Log.Error(ex, "Failed to re-save denoised SSTV image"); }
+      }
+
+      if (treeView1.SelectedNode?.Tag == info) richTextBox1.Text = info.Describe();
+    }
+
+    // None is reported rather than left blank, because it is not the same picture the node started with: the
+    // decode path applies the Wiener by default (D15), so choosing None strips a filter rather than leaving
+    // the image alone.
+    private static string DescribeFilter(SstvDenoiseOptions o)
+    {
+      if (o.Method == SstvDenoiseMethod.None) return "none (raw reconstruction)";
+
+      string gate = o.SkipNoiseOnlyBands ? ", skipping noise-only bands" : "";
+      return o.Method == SstvDenoiseMethod.Wiener
+        ? $"Wiener {o.WienerWindowW}x{o.WienerWindowH}{gate}"
+        : $"NLM strength {o.NlmSig:0.00}, patch {o.NlmPatchWing}" +
+          $"{(o.NlmTwoPass ? ", two-pass" : "")}{gate}";
+    }
+
+    // gray the "Open in Viewer" item until the selected image has been auto-saved to a file on disk, and
+    // the "Combine with Previous Passes" item until this picture has actually been heard before — the
+    // archive is searched here, on demand, rather than kept indexed
     private void ImageMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
     {
-      var info = treeView1.SelectedNode?.Tag as SstvImageInfo;
+      var info = treeView1.SelectedNode?.Tag as IImageNodeInfo;
       OpenImageMNU.Enabled = info?.SavedPath != null && File.Exists(info.SavedPath);
+
+      // denoising needs the raw reconstruction, which rides only on the FINAL image event: a picture still
+      // being drawn has no planes to filter, and filtering it would be overwritten by the next line anyway
+      DenoiseImageMNU.Enabled = info is SstvImageInfo sstv && sstv.Event.Planes != null;
+
+      var ssdv = info as SsdvImageInfo;
+      bool canCombine = ssdv != null && CanCombine(ssdv);
+      CombineImageMNU.Enabled = canCombine;
+      CombineImageMNU.Checked = ssdv?.Combined == true;
+      CombineImageMNU.Text = canCombine
+        ? $"Combine with Previous Passes ({ssdv!.Archived!.Count})"
+        : "Combine with Previous Passes";
     }
 
     private void OpenImageMNU_Click(object sender, EventArgs e)
     {
-      if (treeView1.SelectedNode?.Tag is not SstvImageInfo info || info.SavedPath == null) return;
+      if (treeView1.SelectedNode?.Tag is not IImageNodeInfo info || info.SavedPath == null) return;
       try
       {
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(info.SavedPath) { UseShellExecute = true });
       }
       catch (Exception ex)
       {
-        Log.Error(ex, "Failed to open SSTV image in viewer");
+        Log.Error(ex, "Failed to open the image in viewer");
       }
+    }
+
+
+
+
+    //----------------------------------------------------------------------------------------------
+    //                                      ssdv images
+    //----------------------------------------------------------------------------------------------
+    // called on the decode worker thread (or on the UI thread when a disposed decoder flushes); the
+    // finalized image is auto-saved here, before marshaling, so a pass ending with the panel closing
+    // cannot lose it. final says the assembler will send nothing further for this image — which is not the
+    // same as the image being whole, and off air it usually is not.
+    private void SsdvImageHandler(ImageProduct product, DecodeSnapshot snapshot, Dictionary<int, TreeNode> imageNodes, bool final)
+    {
+      string? savedPath = final && ShouldSaveImage(product) ? SaveImageToFile(product, snapshot) : null;
+      BeginInvoke(() => ShowSsdvImage(product, snapshot, imageNodes, savedPath, final));
+    }
+
+    // fragments an image must carry before it is written to disk — see ShouldSaveImage for why two is
+    // the right number and why a coverage fraction is deliberately not used
+    private const int MinFragmentsToSave = 2;
+
+    /// <summary>Whether a finalized image is worth writing to disk. Deliberately harder to satisfy than
+    /// showing it is: a stray tree node costs nothing and goes away with the session, but a file in
+    /// <c>SsdvImages\</c> is durable clutter. Two conditions:
+    /// <list type="bullet">
+    /// <item><b>More than one fragment.</b> A false positive is a single misread frame. Two of them
+    /// landing in the same image — each having passed the deframer's CRC/RS, each parsing as an image
+    /// fragment, and both carrying the same image identity — is not a coincidence that happens; if it
+    /// has happened, the image is real. So this is the whole test, and one fragment is the only thing
+    /// it rejects.</item>
+    /// <item>The reconstruction has a <b>geometry</b>. Free on SSDV, which carries width and height in
+    /// every packet header; for the raw-JPEG family it comes from walking the file's own markers, so a
+    /// picture built from a fragment at an arbitrary offset has neither an SOI nor a frame header and
+    /// reports 0 x 0. That is the check that guards the front end with no off-air validation, USP's.</item>
+    /// </list>
+    /// A <b>coverage fraction is deliberately not used.</b> It does not catch the case it looks like it
+    /// should — a lone raw-JPEG fragment reports 1 of 1 expected, i.e. 100%, because the expected count
+    /// is derived from the span actually written — and it withholds real images: the off-air
+    /// <c>hades-sa_img225_tailonly</c>, whose first nine packets were lost, is 6 of 15.
+    /// <para>An image that fails these is still shown and still savable by hand from the image context
+    /// menu. Only the automatic write is withheld.</para>
+    /// <para>The fragment count drops to <b>one</b> where the fragments carry their own CRC, which is
+    /// what <see cref="ImageProduct.FragmentFormat"/> reports. The two-fragment rule exists to reject a
+    /// single misread frame, and a CRC-32 already does that far better than a coincidence argument can —
+    /// a false accept is a 1-in-4-billion event. Such a fragment is also worth keeping for its own sake:
+    /// it is archived in the sidecar and can complete this picture on a later pass, which a fragment
+    /// thrown away cannot.</para></summary>
+    private static bool ShouldSaveImage(ImageProduct product)
+    {
+      int floor = product.FragmentFormat != null ? 1 : MinFragmentsToSave;
+
+      return product.FragmentsReceived >= floor
+        && product.Width > 0 && product.Height > 0
+        && product.Jpeg.Length > 0;
+    }
+
+    private void ShowSsdvImage(ImageProduct product, DecodeSnapshot snapshot, Dictionary<int, TreeNode> imageNodes,
+      string? savedPath, bool final)
+    {
+      var (passNode, txPassInfo) = EnsureCurrentPassNode(snapshot);
+
+      bool isNew = !imageNodes.TryGetValue(product.ImageId, out TreeNode? node);
+      if (isNew)
+      {
+        node = new TreeNode { ContextMenuStrip = ImageMenu };
+        node.Tag = new SsdvImageInfo(snapshot, product);
+        imageNodes[product.ImageId] = node;
+        txPassInfo.ImageCount++;
+        AddLeaf(passNode, node);
+      }
+
+      // take in the new reconstruction of this pass; RenderImage below swaps the picture on screen for it
+      var info = (SsdvImageInfo)node!.Tag;
+      info.PassProduct = product;
+      info.Final |= final;
+      // combining stays live: the archived fragments are already cached, so the merge is redone with the
+      // fragment that just arrived and the combined picture fills in during the pass like any other
+      if (info.Combined) Recombine(info);
+      if (savedPath != null) info.SavedPath = savedPath;
+      // the tree label always counts what THIS pass heard, combined or not — it is the pass that the node
+      // is a record of, and a label that changed under a toggle would make two nodes incomparable
+      node.Text = $"{info.FirstSeen:HH:mm:ss}  Image {product.ImageId}  " +
+        $"{product.FragmentsReceived}/{product.FragmentsExpected} fragments";
+      RenderImage(info);
+
+      // an accepted image fragment is real content: un-gray the pass entry the way a valid frame does
+      if (!txPassInfo.HasValidFrame)
+      {
+        txPassInfo.HasValidFrame = true;
+        passNode.ForeColor = Color.Empty;
+      }
+
+      if (!final) UpdateStatusLabel("DECODING...", Color.Green);
+
+      if (treeView1.SelectedNode == node) DisplayImageInfo(info);
+      else if (treeView1.SelectedNode == passNode) richTextBox1.Text = txPassInfo.Describe(DescribeSignalParamsOrUnknown(txPassInfo.SignalParams));
+    }
+
+    // Re-render the node's currently displayed reconstruction — this pass's, or the combined one — and
+    // dispose the bitmap it replaces, but only after the PictureBox has let go of it. A JPEG the OS decoder
+    // refuses, which the first fragments of an image legitimately can be, leaves the previous rendering on
+    // screen rather than blanking it, and leaves its bitmap undisposed.
+    private void RenderImage(SsdvImageInfo info)
+    {
+      var oldBitmap = info.Bitmap;
+      var bitmap = DecodeJpeg(info.Product.Jpeg);
+      if (bitmap != null) info.Bitmap = bitmap;
+      if (ImageBox.Image == oldBitmap) ImageBox.Image = info.Bitmap;
+      if (bitmap != null) oldBitmap?.Dispose();
+    }
+
+    // The received JPEG as a Bitmap. Copied out of the stream rather than handed the stream directly: GDI+
+    // keeps a Bitmap's source stream open for the life of the bitmap, and this one is a MemoryStream over
+    // a buffer that is replaced on the next fragment. Null when the file cannot be decoded at all.
+    private static Bitmap? DecodeJpeg(byte[] jpeg)
+    {
+      try
+      {
+        using var stream = new MemoryStream(jpeg);
+        using var decoded = System.Drawing.Image.FromStream(stream);
+        return new Bitmap(decoded);
+      }
+      catch (Exception e)
+      {
+        Log.Debug(e, "Failed to decode a received JPEG image");
+        return null;
+      }
+    }
+
+    /// <summary>Auto-save the finalized image as JPEG + JSON metadata sidecar under the user data folder,
+    /// beside the SSTV images. The bytes are written verbatim — they already are a JPEG file, gaps filled
+    /// and EOI in place, whatever fraction of the image arrived.
+    /// <para>Where the fragments carry their own CRC the sidecar also holds them, base64'd, which is what
+    /// lets a later pass of the same picture be combined with this one. They are the fragments of
+    /// <b>this</b> reception only, never of a combination — a sidecar that recorded a merge would be
+    /// re-merged next time, and the archive would slowly stop meaning anything.</para></summary>
+    private static string? SaveImageToFile(ImageProduct product, DecodeSnapshot snapshot)
+    {
+      try
+      {
+        string folder = Path.Combine(Utils.GetUserDataFolder(), "SsdvImages");
+        Directory.CreateDirectory(folder);
+        string sat = string.Concat((snapshot.Satellite?.name ?? "Unknown").Split(Path.GetInvalidFileNameChars()));
+        string path = Path.Combine(folder, $"{DateTime.Now:yyyyMMdd_HHmmss}_{sat}_{product.ImageId}.jpg");
+        File.WriteAllBytes(path, product.Jpeg);
+
+        var meta = new
+        {
+          Utc = DateTime.UtcNow,
+          Satellite = snapshot.Satellite?.name,
+          Norad = snapshot.Satellite?.norad_cat_id,
+          Transmitter = snapshot.Transmitter.description,
+          TransmitterUuid = snapshot.Transmitter.uuid,
+          product.ImageId,
+          product.Source,
+          product.Width,
+          product.Height,
+          product.FragmentsReceived,
+          product.FragmentsExpected,
+          product.FirstGapOffset,
+          product.Complete
+        };
+        var json = JObject.FromObject(meta);
+        if (product.FragmentFormat != null) WriteFragments(json, product);
+        File.WriteAllText(Path.ChangeExtension(path, ".json"), json.ToString(Formatting.Indented));
+        return path;
+      }
+      catch (Exception e)
+      {
+        Log.Error(e, "Failed to save the received image");
+        return null;
+      }
+    }
+
+
+
+
+    //----------------------------------------------------------------------------------------------
+    //                                      codec2 voice
+    //----------------------------------------------------------------------------------------------
+    // called on the decode worker thread (or on the UI thread when a disposed decoder flushes); the
+    // finalized message is auto-saved here, before marshaling, so a pass ending with the panel closing
+    // cannot lose it. final says the assembler will send nothing further for this message.
+    private void VoiceMessageHandler(VoiceProduct product, DecodeSnapshot snapshot,
+      Dictionary<int, TreeNode> voiceNodes, bool final)
+    {
+      string? savedPath = final && ShouldSaveVoice(product) ? SaveVoiceToFile(product, snapshot) : null;
+      BeginInvoke(() => ShowVoiceMessage(product, snapshot, voiceNodes, savedPath, final));
+    }
+
+    /// <summary>Whether a finalized message is worth writing to disk. The SSDV rule cannot be reused: there
+    /// its two-fragment floor rests on each fragment having passed a CRC-32, so two of them agreeing on an
+    /// image identity is not a coincidence that happens. <b>Voice frames carry no checksum at all</b> — no
+    /// CRC, no FEC — so the only evidence a message is real is that several frames of exactly the right
+    /// shape turned up close together, each numbered where the previous left off. Three is where that stops
+    /// being explicable by chance, and it costs nothing real: a message the satellite actually sent runs 20
+    /// to 37 sub-frames.
+    /// <para>A rejected message is still shown in the tree and still playable. Only the automatic write is
+    /// withheld, on the same principle as images: a stray node goes away with the session, a file in
+    /// <c>Codec2Voice\</c> does not.</para></summary>
+    private static bool ShouldSaveVoice(VoiceProduct product)
+    {
+      return product.SubFramesReceived >= MinSubFramesToSave && product.Wav.Length > 0;
+    }
+
+    private const int MinSubFramesToSave = 3;
+
+    /// <summary>Auto-save the finalized message as WAV + JSON metadata sidecar under the user data folder,
+    /// beside the SSTV and SSDV images. The bytes are written verbatim — they already are a playable file,
+    /// gaps filled with silence, whatever fraction of the message arrived.</summary>
+    private static string? SaveVoiceToFile(VoiceProduct product, DecodeSnapshot snapshot)
+    {
+      try
+      {
+        string folder = Path.Combine(Utils.GetUserDataFolder(), "Codec2Voice");
+        Directory.CreateDirectory(folder);
+        string sat = string.Concat((snapshot.Satellite?.name ?? "Unknown").Split(Path.GetInvalidFileNameChars()));
+        string path = Path.Combine(folder, $"{DateTime.Now:yyyyMMdd_HHmmss}_{sat}_voice.wav");
+        File.WriteAllBytes(path, product.Wav);
+
+        var meta = new
+        {
+          Utc = DateTime.UtcNow,
+          Satellite = snapshot.Satellite?.name,
+          Norad = snapshot.Satellite?.norad_cat_id,
+          Transmitter = snapshot.Transmitter.description,
+          TransmitterUuid = snapshot.Transmitter.uuid,
+          product.DurationSeconds,
+          product.SampleRate,
+          product.FirstNumber,
+          product.LastNumber,
+          product.SubFramesReceived,
+          product.SubFramesExpected,
+          product.Complete
+        };
+        File.WriteAllText(Path.ChangeExtension(path, ".json"),
+          JObject.FromObject(meta).ToString(Formatting.Indented));
+        return path;
+      }
+      catch (Exception e)
+      {
+        Log.Error(e, "Failed to save the received voice message");
+        return null;
+      }
+    }
+
+    private void ShowVoiceMessage(VoiceProduct product, DecodeSnapshot snapshot,
+      Dictionary<int, TreeNode> voiceNodes, string? savedPath, bool final)
+    {
+      var (passNode, txPassInfo) = EnsureCurrentPassNode(snapshot);
+
+      bool isNew = !voiceNodes.TryGetValue(product.FirstNumber, out TreeNode? node);
+      if (isNew)
+      {
+        node = new TreeNode { ContextMenuStrip = VoiceMenu };
+        node.Tag = new VoiceMessageInfo(snapshot, product);
+        voiceNodes[product.FirstNumber] = node;
+        AddLeaf(passNode, node);
+      }
+
+      var info = (VoiceMessageInfo)node!.Tag;
+      info.Product = product;
+      info.Final |= final;
+      if (savedPath != null) info.SavedPath = savedPath;
+      // no "of N": nothing on air says how long a message is, so the label counts what arrived and how long
+      // the reconstruction plays, and claims nothing more
+      node.Text = $"{info.FirstSeen:HH:mm:ss}  Voice  " +
+        $"{product.SubFramesReceived} sub-frames, {product.DurationSeconds:0.0} s";
+
+      // an accepted sub-frame is real content: un-gray the pass entry the way a valid frame does
+      if (!txPassInfo.HasValidFrame)
+      {
+        txPassInfo.HasValidFrame = true;
+        passNode.ForeColor = Color.Empty;
+      }
+
+      if (!final) UpdateStatusLabel("DECODING...", Color.Green);
+
+      if (treeView1.SelectedNode == node) DisplayVoiceInfo(info);
+      else if (treeView1.SelectedNode == passNode) richTextBox1.Text = txPassInfo.Describe(DescribeSignalParamsOrUnknown(txPassInfo.SignalParams));
+    }
+
+    // a voice node has no picture, so the right pane goes back to plain text rather than to the image
+    // splitter, and the text itself becomes the play button (the FM transcript's interaction, minus the
+    // per-line routing — a message is one clip, so anywhere in the pane means the same thing)
+    private void DisplayVoiceInfo(VoiceMessageInfo info)
+    {
+      ShowTelemetryText();
+      richTextBox1.Text = info.Describe();
+    }
+
+    // Play the message as it currently stands. Decoding the WAV rather than keeping a parallel float buffer
+    // keeps one representation of the audio: the product's file IS the audio, and it is rebuilt from every
+    // sub-frame received so far, so what plays is always what would be saved.
+    private void PlayVoice(VoiceMessageInfo info)
+    {
+      var wav = info.Product.Wav;
+      if (wav.Length <= WavHeaderBytes) return;
+
+      var pcm = new float[(wav.Length - WavHeaderBytes) / 2];
+      for (int i = 0; i < pcm.Length; i++)
+        pcm[i] = BitConverter.ToInt16(wav, WavHeaderBytes + 2 * i) / 32768f;
+
+      PlayAudioClip(pcm, info.Product.SampleRate);
+    }
+
+    // SkyTlm's WavWriter emits the canonical 44-byte RIFF/fmt/data header and nothing else
+    private const int WavHeaderBytes = 44;
+
+    private void VoiceMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
+    {
+      var info = treeView1.SelectedNode?.Tag as VoiceMessageInfo;
+      OpenVoiceMNU.Enabled = info?.SavedPath != null && File.Exists(info.SavedPath);
+    }
+
+    private void PlayVoiceMNU_Click(object sender, EventArgs e)
+    {
+      if (treeView1.SelectedNode?.Tag is VoiceMessageInfo info) PlayVoice(info);
+    }
+
+    private void SaveVoiceMNU_Click(object sender, EventArgs e)
+    {
+      if (treeView1.SelectedNode?.Tag is not VoiceMessageInfo info) return;
+      using var dlg = new SaveFileDialog { Filter = "WAV audio|*.wav", FileName = info.SaveFileName };
+      if (dlg.ShowDialog() == DialogResult.OK) File.WriteAllBytes(dlg.FileName, info.Product.Wav);
+    }
+
+    private void OpenVoiceMNU_Click(object sender, EventArgs e)
+    {
+      if (treeView1.SelectedNode?.Tag is not VoiceMessageInfo info || info.SavedPath == null) return;
+      try
+      {
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(info.SavedPath) { UseShellExecute = true });
+      }
+      catch (Exception ex)
+      {
+        Log.Error(ex, "Failed to open the voice message in a player");
+      }
+    }
+
+
+
+
+    //----------------------------------------------------------------------------------------------
+    //                              combine with previous passes
+    //----------------------------------------------------------------------------------------------
+    // Layout version of the archived fragments in a sidecar. A reader checks it and skips a file it does
+    // not recognize, so a future change of format leaves old pictures readable by old builds and new ones
+    // ignored by them, rather than misread by either.
+    private const int SidecarFormat = 1;
+
+    // How far back the archive is searched for earlier receptions of the picture on screen. The limit is
+    // not a performance measure — it is the only defence there is against an SSDV image ID being reused.
+    // The ID is 8 bits and satellites cycle it freely (HADES-SA sent 237, 238 and 239 twice within 92
+    // minutes on 2026-08-03), so this bounds how far a wrong match can reach back, and no further.
+    private static readonly TimeSpan CombineWindow = TimeSpan.FromDays(30);
+
+    // one earlier reception of the same picture, read back from the sidecar that recorded it
+    private sealed record ArchivedPass(string Path, DateTime Utc, IReadOnlyList<ImageFragment> Fragments);
+
+    // Append this reception's fragments to its sidecar, base64'd, one object each so that a file can be
+    // read by eye and a truncated one is visibly truncated. The correction count travels with the bytes
+    // because it cannot be recovered from them: they are already repaired, and re-parsing reports them
+    // clean. It is what ranks two copies of one fragment when the picture is rebuilt.
+    private static void WriteFragments(JObject json, ImageProduct product)
+    {
+      json["Format"] = SidecarFormat;
+      json["Variant"] = product.FragmentFormat;
+      json["Packets"] = new JArray(product.Fragments.Select(f => new JObject
+      {
+        ["Id"] = f.Id,
+        ["Corrected"] = f.CorrectedBytes,
+        ["Data"] = Convert.ToBase64String(f.Bytes)
+      }));
+    }
+
+    // Whether this image can be combined with anything, and the cue to have the candidates ready if it
+    // can. An empty result is deliberately not cached: two passes of the same satellite in one session is
+    // the case this feature exists for, so a sidecar written half an hour from now must be able to enable
+    // an item that was grayed when the menu was last opened.
+    private static bool CanCombine(SsdvImageInfo info)
+    {
+      if (info.PassProduct.FragmentFormat == null) return false;
+      if (info.Archived == null || info.Archived.Count == 0) info.Archived = FindArchivedPasses(info);
+      return info.Archived.Count > 0;
+    }
+
+    /// <summary>Earlier receptions of the picture on screen, newest first. The auto-saved file names carry
+    /// everything the search needs to reject a file — <c>20260803_034123_HADES-SA_238.json</c> is a date,
+    /// a satellite and an image ID — so the folder is filtered by name and only the few survivors are
+    /// opened, which keeps the cost of a menu opening a directory listing however long the archive
+    /// grows.</summary>
+    private static List<ArchivedPass> FindArchivedPasses(SsdvImageInfo info)
+    {
+      var found = new List<ArchivedPass>();
+      string folder = Path.Combine(Utils.GetUserDataFolder(), "SsdvImages");
+      if (!Directory.Exists(folder)) return found;
+
+      // this node's own sidecar is not an earlier pass; it is this one, written at finalization
+      string ownSidecar = info.SavedPath != null ? Path.ChangeExtension(info.SavedPath, ".json")! : "";
+      DateTime oldest = DateTime.Now - CombineWindow;
+
+      try
+      {
+        foreach (string file in Directory.EnumerateFiles(folder, "*.json"))
+        {
+          if (string.Equals(file, ownSidecar, StringComparison.OrdinalIgnoreCase)) continue;
+          if (!NameMatches(Path.GetFileNameWithoutExtension(file), info.PassProduct.ImageId, oldest)) continue;
+
+          var pass = ReadArchivedPass(file, info);
+          if (pass != null) found.Add(pass);
+        }
+      }
+      catch (Exception e)
+      {
+        Log.Error(e, "Failed to search for earlier receptions of an image");
+      }
+
+      // newest first, which is the order the merge resolves ties in: of two equally clean copies of one
+      // fragment the more recent reception is the likelier to be the same picture
+      found.Sort((a, b) => b.Utc.CompareTo(a.Utc));
+      return found;
+    }
+
+    // The date and image ID a saved file name carries, tested without opening it. The stamp is local time,
+    // as DateTime.Now wrote it.
+    private static bool NameMatches(string name, int imageId, DateTime oldest)
+    {
+      const string StampFormat = "yyyyMMdd_HHmmss";
+      if (name.Length < StampFormat.Length) return false;
+
+      int at = name.LastIndexOf('_');
+      if (at < 0 || !int.TryParse(name.AsSpan(at + 1), out int id) || id != imageId) return false;
+
+      return DateTime.TryParseExact(name.AsSpan(0, StampFormat.Length), StampFormat,
+        CultureInfo.InvariantCulture, DateTimeStyles.None, out var stamp) && stamp >= oldest;
+    }
+
+    // One sidecar read back, or null when it is not an earlier reception of this picture after all: a
+    // layout this build does not know, a different satellite, a different packet format, or no fragments
+    // recorded at all (every sidecar written before this feature, and every one for a family whose
+    // fragments cannot be verified on their own). A malformed file is skipped rather than fatal — the
+    // archive is a folder the operator can edit, and one bad file must not cost the others.
+    private static ArchivedPass? ReadArchivedPass(string file, SsdvImageInfo info)
+    {
+      try
+      {
+        var json = JObject.Parse(File.ReadAllText(file));
+        if ((int?)json["Format"] != SidecarFormat) return null;
+        if ((string?)json["Variant"] != info.PassProduct.FragmentFormat) return null;
+        if ((int?)json["Norad"] != info.Snapshot.Satellite?.norad_cat_id) return null;
+        if (json["Packets"] is not JArray packets || packets.Count == 0) return null;
+
+        var fragments = new List<ImageFragment>(packets.Count);
+        foreach (var p in packets)
+          fragments.Add(new ImageFragment(
+            (int)p["Id"]!, Convert.FromBase64String((string)p["Data"]!), (int)p["Corrected"]!));
+
+        return new ArchivedPass(file, (DateTime?)json["Utc"] ?? DateTime.MinValue, fragments);
+      }
+      catch (Exception e)
+      {
+        Log.Debug(e, "Skipped an unreadable image sidecar: {File}", file);
+        return null;
+      }
+    }
+
+    // Rebuild the combined reconstruction from this pass and the cached archived ones. The pass goes first
+    // so that of two equally clean copies of a fragment the one just received is kept. A merge that yields
+    // nothing leaves MergedProduct null, which shows this pass's picture rather than an empty one.
+    private static void Recombine(SsdvImageInfo info)
+    {
+      var receptions = new List<IReadOnlyList<ImageFragment>> { info.PassProduct.Fragments };
+      foreach (var pass in info.Archived!) receptions.Add(pass.Fragments);
+
+      info.MergedProduct = SsdvMerge.Build(receptions, info.PassProduct.FragmentFormat, info.PassProduct.Source);
+    }
+
+    private void CombineImageMNU_Click(object sender, EventArgs e)
+    {
+      if (treeView1.SelectedNode?.Tag is not SsdvImageInfo info) return;
+
+      if (info.Combined) info.Combined = false;
+      else
+      {
+        if (!CanCombine(info)) return;
+        info.Combined = true;
+        Recombine(info);
+      }
+
+      RenderImage(info);
+      DisplayImageInfo(info);
     }
 
 
@@ -1492,51 +2301,59 @@ namespace SkyRoof
 
     private void richTextBox1_MouseMove(object sender, MouseEventArgs e)
     {
+      if (CurrentVoice != null) { richTextBox1.Cursor = Cursors.Hand; return; }
+
       var (completed, pending) = FmLineAt(e.Location);
       richTextBox1.Cursor = completed != null || pending ? Cursors.Hand : Cursors.Default;
     }
 
     private void richTextBox1_MouseClick(object sender, MouseEventArgs e)
     {
+      // the whole pane is the play button for a voice message, so there is no hit-testing to do — unlike
+      // a transcript, which is a list of separately playable lines
+      if (CurrentVoice != null) { PlayVoice(CurrentVoice); return; }
+
       var (completed, pending) = FmLineAt(e.Location);
       if (completed != null)
       {
-        if (completed.Audio.Length > 0) PlayFmClip(completed.Audio, CurrentFmTranscript!.SampleRate);
+        if (completed.Audio.Length > 0) PlayAudioClip(completed.Audio, CurrentFmTranscript!.SampleRate);
       }
       else if (pending && CurrentFmTranscript!.Pending is { } pendingLine)
       {
         // the open line isn't captured into an FmLineEntry until it closes, so fetch its audio-so-far
         // on demand from the retained decoder rather than pre-capturing it on every LineUpdated tick
         var audio = CurrentFmTranscript.Engine.GetAudio(pendingLine.StartSeconds, pendingLine.EndSeconds);
-        if (audio.Length > 0) PlayFmClip(audio, CurrentFmTranscript.SampleRate);
+        if (audio.Length > 0) PlayAudioClip(audio, CurrentFmTranscript.SampleRate);
       }
     }
 
-    // play one transcript line's audio fragment through the same soundcard (device and gain) used for slicer
-    // output playback, replacing any clip already playing
-    private void PlayFmClip(float[] audio, int sampleRate)
+    // play one decoded mono clip — an FM transcript line, or a codec2 voice message — through the same
+    // soundcard (device and gain) used for slicer output playback, replacing any clip already playing.
+    // Shared rather than duplicated per source: the two things easy to get wrong here are honouring the
+    // configured device and turning it back off afterwards, and both are solved once.
+    private void PlayAudioClip(float[] audio, int sampleRate)
     {
       try
       {
-        var resampled = sampleRate == SdrConst.AUDIO_SAMPLING_RATE ? audio : ResampleFmClip(audio, sampleRate);
-        StopFmClip();
+        var resampled = sampleRate == SdrConst.AUDIO_SAMPLING_RATE ? audio : ResampleClip(audio, sampleRate);
+        StopAudioClip();
 
         // mirror RecordingManager.StartPlayback: temporarily enable the shared speaker soundcard for the
         // duration of the clip if the user has speaker output turned off
         if (!ctx.SpeakerSoundcard.Enabled)
         {
           ctx.SpeakerSoundcard.Enabled = true;
-          SpeakerEnabledForFmClip = true;
+          SpeakerEnabledForClip = true;
         }
 
         ctx.SpeakerSoundcard.AddSamples(resampled);
 
-        if (SpeakerEnabledForFmClip)
+        if (SpeakerEnabledForClip)
         {
           int clipMs = (int)(1000.0 * resampled.Length / SdrConst.AUDIO_SAMPLING_RATE) + 300;
-          FmClipEndTimer = new System.Windows.Forms.Timer { Interval = Math.Max(clipMs, 1) };
-          FmClipEndTimer.Tick += FmClipEndTimer_Tick;
-          FmClipEndTimer.Start();
+          ClipEndTimer = new System.Windows.Forms.Timer { Interval = Math.Max(clipMs, 1) };
+          ClipEndTimer.Tick += ClipEndTimer_Tick;
+          ClipEndTimer.Start();
         }
       }
       catch (Exception ex)
@@ -1545,7 +2362,7 @@ namespace SkyRoof
       }
     }
 
-    private static float[] ResampleFmClip(float[] audio, int sampleRate)
+    private static float[] ResampleClip(float[] audio, int sampleRate)
     {
       var bytes = new byte[audio.Length * sizeof(float)];
       Buffer.BlockCopy(audio, 0, bytes, 0, bytes.Length);
@@ -1561,27 +2378,27 @@ namespace SkyRoof
       return resampled.ToArray();
     }
 
-    private void FmClipEndTimer_Tick(object? sender, EventArgs e)
+    private void ClipEndTimer_Tick(object? sender, EventArgs e)
     {
-      StopFmClip();
+      StopAudioClip();
     }
 
-    private void StopFmClip()
+    private void StopAudioClip()
     {
-      if (FmClipEndTimer != null)
+      if (ClipEndTimer != null)
       {
-        FmClipEndTimer.Stop();
-        FmClipEndTimer.Tick -= FmClipEndTimer_Tick;
-        FmClipEndTimer.Dispose();
-        FmClipEndTimer = null;
+        ClipEndTimer.Stop();
+        ClipEndTimer.Tick -= ClipEndTimer_Tick;
+        ClipEndTimer.Dispose();
+        ClipEndTimer = null;
       }
 
       ctx.SpeakerSoundcard.Buffer.Clear();
 
-      if (SpeakerEnabledForFmClip)
+      if (SpeakerEnabledForClip)
       {
         ctx.SpeakerSoundcard.Enabled = false;
-        SpeakerEnabledForFmClip = false;
+        SpeakerEnabledForClip = false;
       }
     }
 
@@ -1663,6 +2480,11 @@ namespace SkyRoof
       var names = new List<string>();
       if (IsSstvBranchWanted()) names.Add("SSTV");
       if (TelemetrySource is { } source) names.Add(DescribeBranchParams(source.Params));
+      // Imaging is a consumer of the telemetry frames, not a decoder of its own, and it is built on every
+      // satellite whose framing has an assembler — 100-odd USP birds that have never sent a picture
+      // included. Naming it there would be noise, so it is named only where the operator asked for it by
+      // selecting the SSDV row and the parameters it resolved to would otherwise not mention it.
+      if (IsSsdvDecodable() && IsImagingWanted()) names.Add("images");
       if (IsFmDecodable() && FmModelPresent) names.Add("FM speech");
       return names.Count == 0 ? "" : ": " + string.Join(" + ", names);
     }
@@ -1694,6 +2516,16 @@ namespace SkyRoof
       Decoder?.StartProcessing(e);
     }
 
+    // a right-click does not select in a TreeView, but every context menu here — the tree's own, and the
+    // image and voice menus attached to the leaf nodes — reads treeView1.SelectedNode, so the node under
+    // the cursor is selected first. MouseDown, not NodeMouseClick, because the menu opens on mouse up.
+    private void treeView1_MouseDown(object sender, MouseEventArgs e)
+    {
+      if (e.Button != MouseButtons.Right) return;
+      var node = treeView1.GetNodeAt(e.X, e.Y);
+      if (node != null) treeView1.SelectedNode = node;
+    }
+
     private void treeView1_AfterSelect(object sender, TreeViewEventArgs e)
     {
       var node = e.Node;
@@ -1701,10 +2533,19 @@ namespace SkyRoof
 
       // showing non-FM content clears the click-to-play routing; RenderFmTranscript re-arms it for an FM node
       CurrentFmTranscript = null;
+      // and the voice routing, which the same click handler serves — only one of the two can be armed
+      CurrentVoice = null;
 
-      if (node.Tag is SstvImageInfo imageInfo)
+      if (node.Tag is IImageNodeInfo imageInfo)
       {
         DisplayImageInfo(imageInfo);
+        return;
+      }
+
+      if (node.Tag is VoiceMessageInfo voiceInfo)
+      {
+        CurrentVoice = voiceInfo;
+        DisplayVoiceInfo(voiceInfo);
         return;
       }
 

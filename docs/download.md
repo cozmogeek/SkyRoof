@@ -4,7 +4,7 @@
 
 ### Current Version
 
-[SkyRoof v.1.46](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.46/SkyRoofSetup-v.1.46.zip)
+[SkyRoof v.1.48](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.48/SkyRoofSetup-v.1.48.zip)
 
 <br>
 
@@ -15,6 +15,17 @@ See [All Releases](https://github.com/VE3NEA/SkyRoof/releases)
 <br>
 
 ### Release Notes
+
+#### v.1.48
+
+- added SSTV image denoising function
+- fixed the frequency tuning error
+
+#### v.1.47
+
+- added SSDV decoder
+- added CODEC2 voice decoder
+- user-selected soundcard for announcements
 
 #### v.1.46
 

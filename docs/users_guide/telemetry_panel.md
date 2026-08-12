@@ -21,8 +21,18 @@ automatically from the transmitter description in the satellite database, so the
 configure for the signal itself — you only have to select the right transmitter.
 
 The panel also decodes **SSTV** images from satellites that transmit them over an FM downlink. This
-is covered separately in [Receive SSTV Images](recevie_sstv.md); the rest of this page describes
-telemetry frame decoding.
+is covered separately in [Receive SSTV Images](recevie_sstv.md).
+
+Some satellites send more than telemetry in their frames, and the panel reconstructs that too, with
+nothing extra to turn on:
+
+- **SSDV images** — still pictures sent as data, either as SSDV packets (HADES-SA, JY1SAT) or as raw
+  JPEG fragments (the Geoscan fleet, Lobachevsky, and the Sputnix satellites). See
+  [Receive SSDV Images](receive_ssdv.md);
+- **Codec2 voice messages** — short recorded speech compressed to a few hundred bits per second and
+  carried in the telemetry frames of HADES-SA. See [Receive CODEC2 Voice Messages](receive_voice.md).
+
+The rest of this page describes telemetry frame decoding.
 
 If the selected transmitter uses an unsupported modulation, or its parameters are unknown, the panel names
 what it cannot decode — `telemetry format not supported`, `CW decoding not supported`, or
@@ -99,7 +109,8 @@ any of them:
 - **Telemetry format** — the definition used to parse the decoded frames into named telemetry values.
   It is normally chosen from the satellite's NORAD number; select a different one here when the
   frames decode but their values do not. The field is empty, as in the picture above, when SkyRoof has
-  no telemetry definition for the satellite — its frames are then shown without a PAYLOAD section.
+  no telemetry definition for the satellite — its frames are then shown without telemetry values in
+  the PAYLOAD section.
 
 To undo a single override, right-click the field and choose **Reset to database value** — the field
 goes back to the value the database gave it, leaving your other overrides in place. **Cancel** discards
@@ -138,13 +149,21 @@ Each child node is a single decoded frame, labeled with the time of arrival, the
 bytes, and, for AX.25 frames, the source and destination addresses. The newest pass is expanded
 automatically, and the view scrolls to follow new frames as long as the latest frame is selected.
 
+Frames are not the only children a pass can have. An [SSTV](recevie_sstv.md) or
+[SSDV](receive_ssdv.md) image and a [voice message](receive_voice.md) each get a node of their own,
+which is updated in place as the picture or the recording is built up, and which shows the picture or
+plays the audio when it is selected.
+
 Select a **pass** node to see a summary in the detail pane: the start time, satellite, transmitter,
 orbit number, the number of bursts, frames, and images decoded, and the signal parameters.
 
 Select a **frame** node to see its full contents:
 
-- **TELEMETRY** — the named telemetry values decoded from the frame (battery voltage, temperatures,
-  and so on), shown only for satellites that SkyRoof has a telemetry definition for;
+- **PAYLOAD** — everything SkyRoof can name in the frame: the AX.25 source and destination addresses
+  where the frame has them, the named telemetry values decoded from it (battery voltage,
+  temperatures, and so on) for satellites that SkyRoof has a telemetry definition for, and, on the
+  Geoscan fleet, the sending satellite and the message type, including where an image frame's bytes
+  belong in the picture. The section is omitted when none of these apply;
 - **ASCII** — the frame bytes rendered as text;
 - **HEX** — a hex dump of the frame bytes;
 - **META** — the carrier frequency offset (CFO), signal-to-noise ratio (SNR), CRC check result, and
