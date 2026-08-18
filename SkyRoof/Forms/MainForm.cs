@@ -274,6 +274,7 @@ namespace SkyRoof
     {
       WidebandSpectrumAnalyzer?.StartProcessing(e);
       ctx.Slicer?.StartProcessing(e);
+      ctx.AutoRecorder?.AddIqSamples(e.Data, e.Count, wideband: true);
     }
 
     internal void ConfigureWaterfall()
@@ -303,7 +304,7 @@ namespace SkyRoof
 
       // record/playback taps should use the same pre-gain samples.
       ctx.RecorderPanel?.AddIqSamples(e);
-      ctx.AutoRecorder?.AddIqSamples(e.Data, e.Count);
+      ctx.AutoRecorder?.AddIqSamples(e.Data, e.Count, wideband: false);
       ctx.AutoSelector.AddIqSamples(e);
 
       // output-stream routing applies gain; don't mutate the shared buffer used by recording/playback.
@@ -1163,7 +1164,17 @@ namespace SkyRoof
       if (activePass == null) { ctx.AutoRecorder.Stop(); return; }
 
       int maxElDeg = (int)Math.Round(activePass.MaxElevation);
-      ctx.AutoRecorder.EnsureRecording(sat.sat_id, sat.name, maxElDeg, entry.AutoRecordMode);
+      bool wideband = false;
+      int iqRate = SdrConst.AUDIO_SAMPLING_RATE;
+      if (entry.AutoRecordMode == AutoRecordMode.Iq
+        && AutoRecorder.NeedsWidebandIq(ctx.SatelliteSelector.SelectedTransmitter))
+      {
+        if (ctx.Sdr?.Info == null) { ctx.AutoRecorder.Stop(); return; }
+        wideband = true;
+        iqRate = (int)Math.Round(ctx.Sdr.Info.SampleRate);
+      }
+
+      ctx.AutoRecorder.EnsureRecording(sat.sat_id, sat.name, maxElDeg, entry.AutoRecordMode, iqRate, wideband);
     }
     private async Task OneMinuteTick()
     {

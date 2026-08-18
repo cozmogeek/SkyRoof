@@ -11,8 +11,10 @@ namespace SkyRoof
     private readonly Context ctx;
     private readonly object gate = new();
 
-    private WaveFileWriter? writer;
+    private Stream? output;
     private bool isAudio;
+    private bool isWideband;
+    private int iqSampleRate;
     private string? satId;
     private string? fileName;
 
@@ -33,7 +35,7 @@ namespace SkyRoof
 
     public bool IsRecording
     {
-      get { lock (gate) return writer != null; }
+      get { lock (gate) return output != null; }
     }
 
     public AutoRecorder(Context ctx)
@@ -41,7 +43,8 @@ namespace SkyRoof
       this.ctx = ctx;
     }
 
-    public void EnsureRecording(string satId, string satName, int? maxElevationDeg, AutoRecordMode mode)
+    public void EnsureRecording(string satId, string satName, int? maxElevationDeg, AutoRecordMode mode,
+      int iqSampleRate = SdrConst.AUDIO_SAMPLING_RATE, bool wideband = false)
     {
       lock (gate)
       {
@@ -52,8 +55,11 @@ namespace SkyRoof
         }
 
         bool wantAudio = mode == AutoRecordMode.Audio;
+        if (wantAudio) wideband = false;
 
-        if (writer != null && this.satId == satId && isAudio == wantAudio) return;
+        if (output != null && this.satId == satId && isAudio == wantAudio
+          && this.isWideband == wideband && this.iqSampleRate == iqSampleRate)
+          return;
 
         Stop_NoLock();
 
@@ -63,19 +69,29 @@ namespace SkyRoof
         string utc = DateTime.UtcNow.ToString("yyyy-MM-dd_HH_mm_ss", System.Globalization.CultureInfo.InvariantCulture);
         string safeSat = Utils.SanitizeFileNamePart(satName);
         string el = maxElevationDeg == null ? "" : $"_{Math.Clamp(maxElevationDeg.Value, 0, 90):00}deg";
-        string suffix = wantAudio ? "" : "_IQ";
-        fileName = Path.Combine(recordingsDir, $"{utc}Z_{safeSat}{el}{suffix}.wav");
 
-        // audio: PCM16 for player compatibility; IQ: IEEE float32 stereo (cf32) for SatDump/tools.
-        WaveFormat format = wantAudio
-          ? new WaveFormat(SdrConst.AUDIO_SAMPLING_RATE, 16, 1)
-          : WaveFormat.CreateIeeeFloatWaveFormat(SdrConst.AUDIO_SAMPLING_RATE, 2);
-        writer = new WaveFileWriter(fileName, format);
+        // Wideband IQ is RF64: classic WAV is capped at 4 GB (~53 s at 10 Msps float IQ).
+        // SDR# baseband player opens wav/raw/rf64/dd; RF64 keeps sample-rate in the header.
+        // Audio and 48 kHz slicer IQ stay WAV (small enough for the RIFF limit).
+        bool rf64Iq = !wantAudio && wideband;
+        string suffix = wantAudio ? "" : $"_IQ_{iqSampleRate}SPS";
+        string ext = rf64Iq ? ".rf64" : ".wav";
+        fileName = Path.Combine(recordingsDir, $"{utc}Z_{safeSat}{el}{suffix}{ext}");
+
+        if (wantAudio)
+          output = new WaveFileWriter(fileName, new WaveFormat(SdrConst.AUDIO_SAMPLING_RATE, 16, 1));
+        else if (rf64Iq)
+          output = new Rf64WaveWriter(fileName, iqSampleRate, channels: 2, bitsPerSample: 32, ieeeFloat: true);
+        else
+          output = new WaveFileWriter(fileName, WaveFormat.CreateIeeeFloatWaveFormat(iqSampleRate, 2));
+
         this.satId = satId;
         isAudio = wantAudio;
+        isWideband = wideband;
+        this.iqSampleRate = iqSampleRate;
 
-        // start background writer
-        channel = Channel.CreateBounded<WriteChunk>(new BoundedChannelOptions(64)
+        int queueDepth = wideband ? 256 : 64;
+        channel = Channel.CreateBounded<WriteChunk>(new BoundedChannelOptions(queueDepth)
         {
           FullMode = BoundedChannelFullMode.DropOldest,
           SingleReader = true,
@@ -116,10 +132,12 @@ namespace SkyRoof
       }
       catch { }
 
-      writer?.Dispose();
-      writer = null;
+      output?.Dispose();
+      output = null;
       satId = null;
       fileName = null;
+      isWideband = false;
+      iqSampleRate = 0;
       writerCts?.Dispose();
       writerCts = null;
       channel = null;
@@ -130,7 +148,7 @@ namespace SkyRoof
       ChannelWriter<WriteChunk>? w;
       lock (gate)
       {
-        if (writer == null || !isAudio) return;
+        if (output == null || !isAudio) return;
         if (count <= 0) return;
         w = channel?.Writer;
       }
@@ -156,12 +174,12 @@ namespace SkyRoof
         ArrayPool<byte>.Shared.Return(buffer);
     }
 
-    public void AddIqSamples(Complex32[] data, int count)
+    public void AddIqSamples(Complex32[] data, int count, bool wideband)
     {
       ChannelWriter<WriteChunk>? w;
       lock (gate)
       {
-        if (writer == null || isAudio) return;
+        if (output == null || isAudio || isWideband != wideband) return;
         if (count <= 0) return;
         w = channel?.Writer;
       }
@@ -191,13 +209,13 @@ namespace SkyRoof
     private async Task WriterLoop(CancellationToken ct)
     {
       ChannelReader<WriteChunk>? r;
-      WaveFileWriter? localWriter;
+      Stream? localOutput;
       lock (gate)
       {
         r = channel?.Reader;
-        localWriter = writer;
+        localOutput = output;
       }
-      if (r == null || localWriter == null) return;
+      if (r == null || localOutput == null) return;
 
       try
       {
@@ -207,7 +225,7 @@ namespace SkyRoof
           {
             try
             {
-              localWriter.Write(chunk.Buffer, 0, chunk.Count);
+              localOutput.Write(chunk.Buffer, 0, chunk.Count);
             }
             finally
             {
@@ -225,6 +243,32 @@ namespace SkyRoof
         // swallow: recording is best-effort; we don't want to impact audio pipeline
       }
     }
+
+    /// <summary>
+    /// LRPT/HRPT and other high-rate imaging need more than the 48 kHz slicer IQ
+    /// (SatDump SPS must stay above 1). Those recordings tap the SDR stream instead.
+    /// </summary>
+    public static bool NeedsWidebandIq(SatnogsDbTransmitter? tx)
+    {
+      if (tx == null) return false;
+
+      // SatNOGS: AHRPT=17, HRPT=45, LRPT=53
+      if (tx.mode_id is 17 or 45 or 53) return true;
+      if (MentionsWidebandImageMode(tx.DownlinkMode) || MentionsWidebandImageMode(tx.mode)
+        || MentionsWidebandImageMode(tx.description))
+        return true;
+
+      double baud = tx.baud ?? 0;
+      if (tx.gr_sats?.baudrate is double yamlBaud) baud = Math.Max(baud, yamlBaud);
+      if (tx.manual?.baudrate is double manualBaud) baud = Math.Max(baud, manualBaud);
+      return baud >= SdrConst.AUDIO_SAMPLING_RATE;
+    }
+
+    private static bool MentionsWidebandImageMode(string? text)
+    {
+      if (string.IsNullOrEmpty(text)) return false;
+      return text.Contains("LRPT", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("HRPT", StringComparison.OrdinalIgnoreCase);
+    }
   }
 }
-
