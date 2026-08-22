@@ -445,10 +445,13 @@ namespace SkyRoof
       Color color = selected ? SelectedSatBackColor
         : nextAutoMonitor ? NextMonitoredBackColor
         : SystemColors.Window;
+      // fixed: LightGreen / LightGoldenrodYellow stay light in both themes, so black text
+      // is the only color that stays readable when WindowText flips in dark mode
+      Color text = selected || nextAutoMonitor ? Color.Black : SystemColors.WindowText;
 
       if (!item.UseItemStyleForSubItems) item.UseItemStyleForSubItems = true;
       if (item.BackColor != color) item.BackColor = color;
-      if (item.ForeColor != SystemColors.WindowText) item.ForeColor = SystemColors.WindowText;
+      if (item.ForeColor != text) item.ForeColor = text;
     }
 
     private static void EnableDoubleBuffering(ListView listView)
