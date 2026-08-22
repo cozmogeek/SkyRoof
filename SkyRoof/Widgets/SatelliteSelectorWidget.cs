@@ -256,13 +256,13 @@ namespace SkyRoof
     {
       if (e.Index < 0) { e.DrawBackground(); return; }
 
-      Brush backBrush = Brushes.White;
+      Brush backBrush = SystemBrushes.Window;
       FontStyle style = FontStyle.Regular;
 
       var sat = (SatnogsDbSatellite)SatelliteComboBox.Items[e.Index]!;
 
-      if (sat.Flags.HasFlag(SatelliteFlags.Uhf)) backBrush = Brushes.LightCyan;
-      else if (sat.Flags.HasFlag(SatelliteFlags.Vhf)) backBrush = Brushes.LightGoldenrodYellow;
+      if (sat.Flags.HasFlag(SatelliteFlags.Uhf)) backBrush = Theme.UhfTintBrush;
+      else if (sat.Flags.HasFlag(SatelliteFlags.Vhf)) backBrush = Theme.VhfTintBrush;
 
       if (sat.Flags.HasFlag(SatelliteFlags.Ham)) style |= FontStyle.Bold;
       if (sat.status.StartsWith("alive") && sat.Tle == null) style |= FontStyle.Strikeout;
@@ -275,7 +275,7 @@ namespace SkyRoof
 
       string text = sat.name;
       if (!GroupSatellites.Contains(sat)) text += " (not in group)";
-      e.Graphics.DrawString(text, derivedFont ?? e.Font, Brushes.Black, e.Bounds);
+      e.Graphics.DrawString(text, derivedFont ?? e.Font, Theme.RowTextBrush(false), e.Bounds);
 
       derivedFont?.Dispose();
     }
@@ -284,17 +284,16 @@ namespace SkyRoof
     {
       if (e.Index < 0) { e.DrawBackground(); return; }
 
-      Brush bacBrush = Brushes.White;
-      Brush foreBrush = Brushes.Black;
+      Brush bacBrush = SystemBrushes.Window;
 
       var tx = (SatnogsDbTransmitter)TransmitterComboBox.Items[e.Index];
 
-      if (tx.IsUhf()) bacBrush = Brushes.LightCyan;
-      else if (tx.IsVhf()) bacBrush = Brushes.LightGoldenrodYellow;
+      if (tx.IsUhf()) bacBrush = Theme.UhfTintBrush;
+      else if (tx.IsVhf()) bacBrush = Theme.VhfTintBrush;
 
       // derived font disposed after drawing; static Brushes need no disposal
       Font? derivedFont = tx.service == "Amateur" ? new Font(e.Font, FontStyle.Bold) : null;
-      if (!tx.alive || tx.status != "active") foreBrush = Brushes.Silver;
+      Brush foreBrush = Theme.RowTextBrush(!tx.alive || tx.status != "active");
 
       e.Graphics.FillRectangle(bacBrush, e.Bounds);
       e.Graphics.DrawString(tx.description, derivedFont ?? e.Font, foreBrush, e.Bounds);

@@ -96,15 +96,15 @@ namespace SkyRoof
       item.Tag = new ItemData(sat);
       item.ToolTipText = sat.GetTooltipText();
 
-      if (sat.Transmitters.Any(t => t.IsUhf() && t.HasUplink())) item.BackColor = Color.LightCyan;
-      else if (sat.Transmitters.Any(t => t.IsVhf() && t.HasUplink())) item.BackColor = Color.LightGoldenrodYellow;
+      if (sat.Transmitters.Any(t => t.IsUhf() && t.HasUplink())) item.BackColor = Theme.UhfTint;
+      else if (sat.Transmitters.Any(t => t.IsVhf() && t.HasUplink())) item.BackColor = Theme.VhfTint;
 
       BoldFont ??= new Font(listView1.Font, FontStyle.Bold);
       StrikeoutFont ??= new Font(listView1.Font, FontStyle.Strikeout);
 
       if (sat.Flags.HasFlag(SatelliteFlags.Ham)) item.Font = BoldFont;
-      if (!sat.status.StartsWith("alive")) item.ForeColor = Color.Silver;
-      else if (sat.Tle == null) item.Font = StrikeoutFont;
+      item.ForeColor = Theme.RowText(!sat.status.StartsWith("alive"));
+      if (sat.status.StartsWith("alive") && sat.Tle == null) item.Font = StrikeoutFont;
 
       return item;
     }

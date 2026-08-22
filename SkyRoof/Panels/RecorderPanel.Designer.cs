@@ -1,4 +1,4 @@
-namespace SkyRoof
+﻿namespace SkyRoof
 {
   partial class RecorderPanel
   {
@@ -38,7 +38,7 @@ namespace SkyRoof
       SaveMenuBtn = new Button();
       LoadBtn = new Button();
       PlaybackBtn = new Button();
-      toolTip1 = new ToolTip(components);
+      toolTip1 = new VE3NEA.ToolTipEx(components);
       GainSlider = new TrackBar();
       RecordMenu = new ContextMenuStrip(components);
       RecordAudioMNU = new ToolStripMenuItem();
@@ -64,6 +64,7 @@ namespace SkyRoof
       StatusBar.Location = new Point(0, 150);
       StatusBar.Name = "StatusBar";
       StatusBar.Size = new Size(612, 22);
+      StatusBar.SizingGrip = false;
       StatusBar.TabIndex = 0;
       StatusBar.Text = "statusStrip1";
       // 
@@ -220,7 +221,7 @@ namespace SkyRoof
       // 
       // WaveformWidget
       // 
-      WaveformWidget.BackColor = Color.Black;
+      WaveformWidget.BackColor = Color.Black; // fixed: instrument display
       WaveformWidget.Dock = DockStyle.Fill;
       WaveformWidget.Location = new Point(0, 0);
       WaveformWidget.Name = "WaveformWidget";
@@ -285,6 +286,6 @@ namespace SkyRoof
     private WaveformWidget WaveformWidget;
     private Panel SliderPanel;
     private TrackBar GainSlider;
-    private ToolTip toolTip1;
+    private VE3NEA.ToolTipEx toolTip1;
   }
 }

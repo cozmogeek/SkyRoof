@@ -22,6 +22,8 @@ namespace SkyRoof
     public SatelliteDetailsWidget()
     {
       InitializeComponent();
+
+      ImageLabel.LinkColor = WebsiteLabel.LinkColor = SatnogsLabel.LinkColor = Theme.Link;
     }
 
     internal void RestoreLayout(UiSettings ui)
@@ -80,10 +82,10 @@ namespace SkyRoof
         item.Group = listView1.Groups[0];
 
         // highlighting
-        if (tx.IsVhf()) item.BackColor = Color.LightGoldenrodYellow;
-        if (tx.IsUhf()) item.BackColor = Color.LightCyan;
+        if (tx.IsVhf()) item.BackColor = Theme.VhfTint;
+        if (tx.IsUhf()) item.BackColor = Theme.UhfTint;
         if (tx.service == "Amateur") item.Font = BoldFont;
-        if (!tx.alive || tx.status != "active") item.ForeColor = Color.Silver; 
+        item.ForeColor = Theme.RowText(!tx.alive || tx.status != "active");
         
         // tooltip
         item.ToolTipText = tx.GetTooltipText();
@@ -96,14 +98,15 @@ namespace SkyRoof
       {
         var item = new ListViewItem([t.Mode, t.Downlink, t.Uplink]);
         item.Group = listView1.Groups[1];
-        if (t.Status != "active") item.ForeColor = Color.Silver;
         item.ToolTipText = t.GetTooltipText();
 
         // band color
         var match = Regex.Match(t.Downlink, "^[0-9.]+");
         if (match.Success && float.TryParse(match.Groups[0].Value, CultureInfo.InvariantCulture, out float freq))
-          if (freq >= 144&& freq <= 148) item.BackColor = Color.LightGoldenrodYellow;
-          else if (freq >= 430 && freq <= 440) item.BackColor = Color.LightCyan;
+          if (freq >= 144&& freq <= 148) item.BackColor = Theme.VhfTint;
+          else if (freq >= 430 && freq <= 440) item.BackColor = Theme.UhfTint;
+
+        item.ForeColor = Theme.RowText(t.Status != "active");
 
         listView1.Items.Add(item);
       }

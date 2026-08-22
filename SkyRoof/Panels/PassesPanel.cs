@@ -13,7 +13,7 @@ namespace SkyRoof
     private List<ListViewItem> Items = new();
 
     private readonly Font BoldFont;
-    private readonly Pen PathPen = new Pen(Brushes.Teal, 2);
+    private readonly Pen PathPen = new Pen(Theme.Now, 2);
     private SatnogsDbSatellite? ContextMenuSat;
 
 
@@ -233,35 +233,35 @@ namespace SkyRoof
       string text = pass.Satellite.name;
       var size = e.Graphics.MeasureString(text, BoldFont);
       var rect = new RectangleF(e.Bounds.X, e.Bounds.Y, size.Width, size.Height);
-      var brush = Brushes.White;
-      if (pass.Satellite.Flags.HasFlag(SatelliteFlags.Uhf)) brush = Brushes.LightCyan;
-      else if (pass.Satellite.Flags.HasFlag(SatelliteFlags.Vhf)) brush = Brushes.LightGoldenrodYellow;
+      Brush brush = SystemBrushes.Window;
+      if (pass.Satellite.Flags.HasFlag(SatelliteFlags.Uhf)) brush = Theme.UhfTintBrush;
+      else if (pass.Satellite.Flags.HasFlag(SatelliteFlags.Vhf)) brush = Theme.VhfTintBrush;
       e.Graphics.FillRectangle(brush, rect);
-      e.Graphics.DrawString(text, BoldFont, Brushes.Black, rect);
+      e.Graphics.DrawString(text, BoldFont, Theme.RowTextBrush(false), rect);
 
       // orbit number
       text = $"#{pass.OrbitNumber}";
       size = e.Graphics.MeasureString(text, listViewEx1.Font);
       rect = new RectangleF(rect.Right + 10, rect.Y, size.Width, size.Height);
-      e.Graphics.DrawString(text, listViewEx1.Font, Brushes.Black, rect);
+      e.Graphics.DrawString(text, listViewEx1.Font, SystemBrushes.WindowText, rect);
 
       // start/end time
       text = pass.Geostationary ?
         "Geostationary" : $"{pass.StartTime.ToLocalTime():yyyy-MM-dd  HH:mm:ss}  to  {pass.EndTime.ToLocalTime():HH:mm:ss}";
       size = e.Graphics.MeasureString(text, listViewEx1.Font);
       rect = new RectangleF(e.Bounds.X, e.Bounds.Y + e.Bounds.Height - size.Height - 2, size.Width, size.Height);
-      e.Graphics.DrawString(text, listViewEx1.Font, Brushes.Black, rect);
+      e.Graphics.DrawString(text, listViewEx1.Font, SystemBrushes.WindowText, rect);
 
       // duration / elevation
       text = pass.Geostationary ?
         $"{pass.MaxElevation:F0}°" : $"{Utils.TimespanToString(pass.EndTime - pass.StartTime, false)}   {pass.MaxElevation:F0}°";
       size = e.Graphics.MeasureString(text, listViewEx1.Font);
       rect = new RectangleF(e.Bounds.X + w - size.Width, e.Bounds.Y + e.Bounds.Height - size.Height - 2, size.Width, size.Height);
-      e.Graphics.DrawString(text, listViewEx1.Font, Brushes.Black, rect);
+      e.Graphics.DrawString(text, listViewEx1.Font, SystemBrushes.WindowText, rect);
 
       // wait time
       text = now ? "Now" : $"in {Utils.TimespanToString(pass.StartTime - DateTime.UtcNow)}";
-      brush = now ? Brushes.Green : Brushes.Black;
+      brush = now ? Theme.NowBrush : SystemBrushes.WindowText;
       size = e.Graphics.MeasureString(text, BoldFont);
       rect = new RectangleF(e.Bounds.X + w - size.Width, e.Bounds.Y, size.Width, size.Height);
       e.Graphics.DrawString(text, BoldFont, brush, rect);
@@ -279,11 +279,11 @@ namespace SkyRoof
       var center = new PointF(rect.Left + radius, rect.Top + radius);
 
       // grid
-      e.Graphics.DrawEllipse(Pens.Silver, rect);
-      e.Graphics.DrawLine(Pens.Silver, rect.Left, center.Y, rect.Right, center.Y);
-      e.Graphics.DrawLine(Pens.Silver, center.X, rect.Top, center.X, rect.Bottom);
+      e.Graphics.DrawEllipse(Pens.Silver, rect); // fixed: mini sky view grid, silver in both themes
+      e.Graphics.DrawLine(Pens.Silver, rect.Left, center.Y, rect.Right, center.Y); // fixed: grid
+      e.Graphics.DrawLine(Pens.Silver, center.X, rect.Top, center.X, rect.Bottom); // fixed: grid
       rect.Inflate(-radius / 2, -radius / 2);
-      e.Graphics.DrawEllipse(Pens.Silver, rect);
+      e.Graphics.DrawEllipse(Pens.Silver, rect); // fixed: mini sky view grid, silver in both themes
 
       var path = ((SatellitePass)e.Item.Tag).MiniPath;
       if (path.Length > 1)
@@ -294,13 +294,13 @@ namespace SkyRoof
         e.Graphics.DrawLines(PathPen, points);
 
         // end points
-        e.Graphics.FillEllipse(Brushes.Green, points.First().X - 3, points.First().Y - 3, 6, 6);
+        e.Graphics.FillEllipse(Theme.NowBrush, points.First().X - 3, points.First().Y - 3, 6, 6);
         e.Graphics.FillEllipse(Brushes.Red, points.Last().X - 3, points.Last().Y - 3, 6, 6);
       }
 
       // item separator
       rect = new RectangleF(e.Bounds.X, e.Bounds.Y + h, e.Bounds.Width, 1);
-      e.Graphics.FillRectangle(Brushes.Gray, rect);
+      e.Graphics.FillRectangle(SystemBrushes.ControlDark, rect);
     }
 
     private void listViewEx1_ItemMouseHover(object sender, ListViewItemMouseHoverEventArgs e)

@@ -16,7 +16,9 @@ namespace SkyRoof
       public string text;
       public bool Underlined;
       public Brush bgBrush = Brushes.Transparent;
-      public Brush fgBrush = Brushes.Black;
+      // null means "the ink the painter picks for the surface under this token": the system text
+      // color on the console's own background, black on the user's fixed row and chip colors
+      public Brush? fgBrush;
       public bool AppendSpace = true;
 
       public DisplayToken(string text)

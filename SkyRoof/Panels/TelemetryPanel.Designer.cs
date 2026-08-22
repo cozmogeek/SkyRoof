@@ -1,4 +1,4 @@
-namespace SkyRoof
+﻿namespace SkyRoof
 {
   partial class TelemetryPanel
   {
@@ -30,7 +30,7 @@ namespace SkyRoof
     {
       components = new System.ComponentModel.Container();
       SatNameLabel = new Label();
-      toolTip1 = new ToolTip(components);
+      toolTip1 = new VE3NEA.ToolTipEx(components);
       SettingsButton = new Button();
       StatusLabel = new Label();
       treeView1 = new TreeView();
@@ -170,7 +170,7 @@ namespace SkyRoof
       // 
       // ImageBox
       // 
-      ImageBox.BackColor = Color.DimGray;
+      ImageBox.BackColor = SystemColors.ControlDarkDark;
       ImageBox.ContextMenuStrip = ImageMenu;
       ImageBox.Dock = DockStyle.Fill;
       ImageBox.Location = new Point(0, 0);
@@ -293,7 +293,7 @@ namespace SkyRoof
 
     #endregion
     public Label SatNameLabel;
-    private ToolTip toolTip1;
+    private VE3NEA.ToolTipEx toolTip1;
     private Button SettingsButton;
     public Label StatusLabel;
     private TreeView treeView1;

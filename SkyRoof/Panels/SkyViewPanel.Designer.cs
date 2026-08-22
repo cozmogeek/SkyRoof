@@ -33,7 +33,7 @@
       RealTimeRadioBtn = new RadioButton();
       OrbitRadioBtn = new RadioButton();
       DrawPanel = new Panel();
-      toolTip1 = new ToolTip(components);
+      toolTip1 = new VE3NEA.ToolTipEx(components);
       FlowPanel = new FlowLayoutPanel();
       RadioButtonsPanel.SuspendLayout();
       SuspendLayout();
@@ -53,7 +53,6 @@
       // RealTimeRadioBtn
       // 
       RealTimeRadioBtn.AutoSize = true;
-      RealTimeRadioBtn.BackColor = Color.FromArgb(230, 249, 255);
       RealTimeRadioBtn.Checked = true;
       RealTimeRadioBtn.Location = new Point(3, 3);
       RealTimeRadioBtn.Name = "RealTimeRadioBtn";
@@ -61,20 +60,19 @@
       RealTimeRadioBtn.TabIndex = 0;
       RealTimeRadioBtn.TabStop = true;
       RealTimeRadioBtn.Text = "Real Time";
-      RealTimeRadioBtn.UseVisualStyleBackColor = false;
+      RealTimeRadioBtn.UseVisualStyleBackColor = true;
       RealTimeRadioBtn.CheckedChanged += radioButton_CheckedChanged;
       // 
       // OrbitRadioBtn
       // 
       OrbitRadioBtn.AutoSize = true;
-      OrbitRadioBtn.BackColor = Color.FromArgb(224, 224, 224);
       OrbitRadioBtn.Enabled = false;
       OrbitRadioBtn.Location = new Point(85, 3);
       OrbitRadioBtn.Name = "OrbitRadioBtn";
       OrbitRadioBtn.Size = new Size(99, 19);
       OrbitRadioBtn.TabIndex = 1;
       OrbitRadioBtn.Text = "Selected Orbit";
-      OrbitRadioBtn.UseVisualStyleBackColor = false;
+      OrbitRadioBtn.UseVisualStyleBackColor = true;
       OrbitRadioBtn.CheckedChanged += radioButton_CheckedChanged;
       // 
       // DrawPanel
@@ -94,7 +92,6 @@
       // FlowPanel
       // 
       FlowPanel.AutoSize = true;
-      FlowPanel.BackColor = Color.White;
       FlowPanel.Dock = DockStyle.Top;
       FlowPanel.Location = new Point(0, 25);
       FlowPanel.MaximumSize = new Size(0, 60);
@@ -125,7 +122,7 @@
     private RadioButton RealTimeRadioBtn;
     private RadioButton OrbitRadioBtn;
     private Panel DrawPanel;
-    private ToolTip toolTip1;
+    private VE3NEA.ToolTipEx toolTip1;
     private FlowLayoutPanel FlowPanel;
   }
 }

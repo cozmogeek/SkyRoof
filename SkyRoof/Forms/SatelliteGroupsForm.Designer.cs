@@ -52,7 +52,7 @@ namespace SkyRoof
       DetailsMNU = new ToolStripMenuItem();
       toolStripMenuItem1 = new ToolStripMenuItem();
       panel5 = new Panel();
-      listView1 = new ListView();
+      listView1 = new VE3NEA.ListViewEx();
       columnHeader1 = new ColumnHeader();
       columnHeader2 = new ColumnHeader();
       columnHeader3 = new ColumnHeader();
@@ -62,7 +62,7 @@ namespace SkyRoof
       panel6 = new Panel();
       flowLayoutPanel5 = new FlowLayoutPanel();
       label3 = new Label();
-      FilterTextbox = new TextBox();
+      FilterTextbox = new VE3NEA.TextBoxEx();
       ClearSearchBtn = new Button();
       UpdatedDateLabel = new Label();
       flowLayoutPanel4 = new FlowLayoutPanel();
@@ -85,7 +85,7 @@ namespace SkyRoof
       FutureCheckbox = new CheckBox();
       ReEnteredCheckbox = new CheckBox();
       label1 = new Label();
-      toolTip1 = new ToolTip(components);
+      toolTip1 = new VE3NEA.ToolTipEx(components);
       panel1.SuspendLayout();
       panel8.SuspendLayout();
       panel2.SuspendLayout();
@@ -415,7 +415,7 @@ namespace SkyRoof
       // 
       // flowLayoutPanel5
       // 
-      flowLayoutPanel5.BackColor = Color.Gainsboro;
+      flowLayoutPanel5.BackColor = SystemColors.ControlLight;
       flowLayoutPanel5.BorderStyle = BorderStyle.FixedSingle;
       flowLayoutPanel5.Controls.Add(label3);
       flowLayoutPanel5.Controls.Add(FilterTextbox);
@@ -469,7 +469,7 @@ namespace SkyRoof
       // 
       // flowLayoutPanel4
       // 
-      flowLayoutPanel4.BackColor = Color.Gainsboro;
+      flowLayoutPanel4.BackColor = SystemColors.ControlLight;
       flowLayoutPanel4.BorderStyle = BorderStyle.FixedSingle;
       flowLayoutPanel4.Controls.Add(label5);
       flowLayoutPanel4.Controls.Add(HamCheckbox);
@@ -519,7 +519,7 @@ namespace SkyRoof
       // 
       // flowLayoutPanel3
       // 
-      flowLayoutPanel3.BackColor = Color.Gainsboro;
+      flowLayoutPanel3.BackColor = SystemColors.ControlLight;
       flowLayoutPanel3.BorderStyle = BorderStyle.FixedSingle;
       flowLayoutPanel3.Controls.Add(label4);
       flowLayoutPanel3.Controls.Add(VhfCheckbox);
@@ -544,7 +544,7 @@ namespace SkyRoof
       // VhfCheckbox
       // 
       VhfCheckbox.AutoSize = true;
-      VhfCheckbox.BackColor = Color.Yellow;
+      VhfCheckbox.BackColor = Theme.VhfTint;
       VhfCheckbox.Checked = true;
       VhfCheckbox.CheckState = CheckState.Checked;
       VhfCheckbox.Location = new Point(51, 3);
@@ -559,7 +559,7 @@ namespace SkyRoof
       // UhfCheckbox
       // 
       UhfCheckbox.AutoSize = true;
-      UhfCheckbox.BackColor = Color.Aquamarine;
+      UhfCheckbox.BackColor = Theme.UhfTint;
       UhfCheckbox.Checked = true;
       UhfCheckbox.CheckState = CheckState.Checked;
       UhfCheckbox.Location = new Point(105, 3);
@@ -586,7 +586,7 @@ namespace SkyRoof
       // 
       // flowLayoutPanel2
       // 
-      flowLayoutPanel2.BackColor = Color.Gainsboro;
+      flowLayoutPanel2.BackColor = SystemColors.ControlLight;
       flowLayoutPanel2.BorderStyle = BorderStyle.FixedSingle;
       flowLayoutPanel2.Controls.Add(label6);
       flowLayoutPanel2.Controls.Add(TransponderCheckbox);
@@ -649,7 +649,7 @@ namespace SkyRoof
       // 
       // flowLayoutPanel1
       // 
-      flowLayoutPanel1.BackColor = Color.Gainsboro;
+      flowLayoutPanel1.BackColor = SystemColors.ControlLight;
       flowLayoutPanel1.BorderStyle = BorderStyle.FixedSingle;
       flowLayoutPanel1.Controls.Add(label7);
       flowLayoutPanel1.Controls.Add(AliveCheckbox);
@@ -773,7 +773,7 @@ namespace SkyRoof
     private Panel panel6;
     private FlowLayoutPanel flowLayoutPanel5;
     private Label label3;
-    private TextBox FilterTextbox;
+    private VE3NEA.TextBoxEx FilterTextbox;
     private Button ClearSearchBtn;
     private Label UpdatedDateLabel;
     private FlowLayoutPanel flowLayoutPanel4;
@@ -797,7 +797,7 @@ namespace SkyRoof
     private CheckBox ReEnteredCheckbox;
     private Panel panel7;
     private Label CountLabel;
-    public ListView listView1;
+    public VE3NEA.ListViewEx listView1;
     private ColumnHeader columnHeader1;
     private ColumnHeader columnHeader2;
     private ColumnHeader columnHeader3;
@@ -812,7 +812,7 @@ namespace SkyRoof
     private Button AddGroupBtn;
     private Button DeleteSatBtn;
     private Button AddSatBtn;
-    private ToolTip toolTip1;
+    private VE3NEA.ToolTipEx toolTip1;
     private ContextMenuStrip GroupsTreePopupMenu;
     private ToolStripMenuItem RenameMNU2;
     private ToolStripMenuItem DetailsMNU2;

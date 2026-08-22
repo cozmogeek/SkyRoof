@@ -129,13 +129,13 @@ namespace SkyRoof
 
         if (f % 500 == 0)
         {
-          e.Graphics.DrawLine(Pens.Black, x, TOP_BAR_HEIGHT - 12, x, TOP_BAR_HEIGHT);
+          e.Graphics.DrawLine(SystemPens.ControlText, x, TOP_BAR_HEIGHT - 12, x, TOP_BAR_HEIGHT);
           string freqText = f.ToString();
           x -= e.Graphics.MeasureString(freqText, Font).Width / 2;
-          e.Graphics.DrawString(freqText, Font, Brushes.Black, x, 0);
+          e.Graphics.DrawString(freqText, Font, SystemBrushes.ControlText, x, 0);
         }
         else
-          e.Graphics.DrawLine(Pens.Black, x, TOP_BAR_HEIGHT - 7, x, TOP_BAR_HEIGHT);
+          e.Graphics.DrawLine(SystemPens.ControlText, x, TOP_BAR_HEIGHT - 7, x, TOP_BAR_HEIGHT);
       }
 
       // callsign
@@ -144,12 +144,12 @@ namespace SkyRoof
         x = LEFT_BAR_WIDTH + pixelsPerHz * HotItem.Decode.OffsetFrequencyHz;
         DrawTriangle(e.Graphics, (int)x, Pens.Green, Brushes.Lime);
 
-        var fgBrush = Brushes.Black;
-        var bgBrush = Brushes.White;
+        Brush fgBrush = SystemBrushes.WindowText;
+        Brush bgBrush = SystemBrushes.Window;
 
         if (HotItem.FromMe)
         {
-          fgBrush = Brushes.White;
+          fgBrush = Brushes.White; // fixed: white on the red 'from me' chip
           bgBrush = Brushes.Red;
         }
         else
@@ -157,8 +157,13 @@ namespace SkyRoof
           var token = HotItem.Tokens.FirstOrDefault(t => t.text == HotItem.Parse.DECallsign);
           if (token != null)
           {
-            if ((token.bgBrush as SolidBrush)?.Color != Color.Transparent) bgBrush = token.bgBrush;
-            if ((token.fgBrush as SolidBrush)?.Color != Color.Silver) fgBrush = token.fgBrush;
+            if ((token.bgBrush as SolidBrush)?.Color != Color.Transparent)
+            {
+              bgBrush = token.bgBrush;
+              fgBrush = Brushes.Black; // fixed: a token background is a light user color in both themes
+            }
+            if (token.fgBrush != null && (token.fgBrush as SolidBrush)?.Color != Color.Silver) // fixed: sentinel, not painted
+              fgBrush = token.fgBrush;
           }
         }
 
