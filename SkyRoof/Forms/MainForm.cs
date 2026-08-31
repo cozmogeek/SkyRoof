@@ -298,6 +298,7 @@ namespace SkyRoof
       ctx.Slicer.AudioDataAvailable += Slicer_AudioDataAvailable;
       ctx.Slicer.IqDataAvailable += Slicer_IqDataAvailable;
       ctx.Slicer.Squelch.Enabled = ctx.Settings.Audio.Squelch;
+      ctx.Slicer.ApplyModeVolumes(ctx.Settings.Audio.ModeVolume);
     }
 
     private void Slicer_IqDataAvailable(object? sender, DataEventArgs<Complex32> e)
@@ -486,7 +487,11 @@ namespace SkyRoof
       ctx.SpeakerSoundcard.SetDeviceId(ctx.Settings.Audio.SpeakerSoundcard);
       GainWidget.ApplyAfGain();
       ctx.SpeakerSoundcard.Enabled = ctx.Settings.Audio.SpeakerEnabled;
-      if (ctx.Slicer != null) ctx.Slicer.Squelch.Enabled = ctx.Settings.Audio.Squelch;
+      if (ctx.Slicer != null)
+      {
+        ctx.Slicer.Squelch.Enabled = ctx.Settings.Audio.Squelch;
+        ctx.Slicer.ApplyModeVolumes(ctx.Settings.Audio.ModeVolume);
+      }
     }
 
     internal void ApplyKissServerSettings()

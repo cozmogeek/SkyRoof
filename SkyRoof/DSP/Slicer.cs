@@ -17,6 +17,9 @@ namespace SkyRoof
     /// <summary>Extra linear gain for CW on top of the SSB-style Real×3 path (narrow filter / lower level vs FM).</summary>
     private const float CwAudioGain = 12f;
 
+    /// <summary>Per-mode linear AF multipliers from settings (index = <see cref="Mode"/>). Updated from the UI thread.</summary>
+    private readonly float[] ModeVolumeLinear = [1f, 1f, 1f, 1f, 1f, 1f, 1f];
+
     private const int STOPBAND_REJECTION_DB = 80;
     private const double USEFUL_BANDWIDTH = 0.95 * SdrConst.AUDIO_SAMPLING_RATE / 2; // 22 kHz useful at 48 KHz sampling rate
     
@@ -82,6 +85,12 @@ namespace SkyRoof
       if (CurrentMode != Mode.CW) offsetHz += ModeOffsets[(int)CurrentMode];
 
       FirstMixer.SetTarget(offsetHz, rateHzPerSec);
+    }
+
+    /// <summary>Copy relative mode volumes (linear amplitude) from settings. Safe to call from the UI thread.</summary>
+    public void ApplyModeVolumes(ModeVolumeSettings volumes)
+    {
+      volumes.CopyLinearGainsTo(ModeVolumeLinear);
     }
 
     private void SetMode(Mode mode)
@@ -259,6 +268,14 @@ namespace SkyRoof
         float reelScale = CurrentMode == Mode.CW ? 3f * CwAudioGain : 3f;
         for (int i = 0; i < outputCount; i++)
           audioArgs.Data[i] = RationalResamplerOutputBuffer.Data[i].Real * reelScale;
+      }
+
+      // relative per-mode volume from Audio settings (balances FM vs SSB/CW at the same AF Gain)
+      float modeVolume = ModeVolumeLinear[(int)CurrentMode];
+      if (modeVolume != 1f)
+      {
+        for (int i = 0; i < outputCount; i++)
+          audioArgs.Data[i] *= modeVolume;
       }
 
       // return audio data

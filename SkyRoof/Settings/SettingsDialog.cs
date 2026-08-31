@@ -128,6 +128,16 @@ namespace SkyRoof
           ValidateInt(e, 60, -60);
           break;
 
+        case "SkyRoof.ModeVolumeSettings.Usb":
+        case "SkyRoof.ModeVolumeSettings.Lsb":
+        case "SkyRoof.ModeVolumeSettings.UsbData":
+        case "SkyRoof.ModeVolumeSettings.LsbData":
+        case "SkyRoof.ModeVolumeSettings.Cw":
+        case "SkyRoof.ModeVolumeSettings.Fm":
+        case "SkyRoof.ModeVolumeSettings.FmData":
+          ValidateInt(e, 40, -40);
+          break;
+
         case "SkyRoof.Ft4WaterfallSettings.Bandwidth":
           ValidateInt(e, 5000, 2000);
           break;
@@ -213,7 +223,8 @@ namespace SkyRoof
       if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.KissServerSettings.")))
         ctx.MainForm.ApplyKissServerSettings();
 
-      if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.AudioSettings.")))
+      if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.AudioSettings.") ||
+                                    s.StartsWith("SkyRoof.ModeVolumeSettings.")))
         ctx.MainForm.ApplyAudioSettings();
 
       if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.Announcement.Minutes")) ||
