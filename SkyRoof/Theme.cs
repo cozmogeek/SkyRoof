@@ -86,6 +86,12 @@ namespace SkyRoof
     public static Color TipBack => Pick(SystemColors.Info, SystemColors.ControlLight);
     public static Color TipText => Pick(SystemColors.InfoText, SystemColors.ControlText);
 
+    // Section headers in list views, and the rule that trails the header text. The theme paints
+    // them a dark blue that the dark surface swallows and offers no color of its own, so
+    // ListViewEx paints the header itself; the light values are the ones it used to paint.
+    public static Color ListGroupText => Pick(Color.FromArgb(33, 93, 198), Color.FromArgb(138, 180, 248));
+    public static Color ListGroupRule => Pick(Color.FromArgb(178, 193, 224), Color.FromArgb(45, 45, 45));
+
     // hyperlinks. Blue is barely readable on the dark surface, aqua replaces it there
     public static Color Link => Pick(Color.Blue, Color.Aqua);
 
@@ -165,5 +171,12 @@ namespace SkyRoof
     // other theme's background - lime on #F0F0F0 and green on #202020 are both about 1.5:1
     public static Color PassbandFill => Pick(Color.FromArgb(200, Color.Lime), Color.FromArgb(200, Color.Green));
     public static Color PassbandFrame => Pick(Color.Green, Color.Lime);
+
+    // Signal Details provenance: the color of a value a decoded frame has confirmed - the field dots, the
+    // gear glyph and the dialog's status line. The text is what sets the requirement: LimeGreen carries a
+    // dot on either ground but washes out as text on #F0F0F0, the same 1.5:1 the passband above trades
+    // places over, so the light theme gets a dark green. The edited color stays Color.Orange in both
+    // themes and is not an entry here, by the rule at the top of this section.
+    public static Color ParamsConfirmed => Pick(Color.Green, Color.LimeGreen);
   }
 }
