@@ -122,7 +122,11 @@ namespace SkyRoof
 
       ctx.Settings.Satellites.AutoMonitorEnabled = enabled;
       ctx.Settings.SaveToFile();
-      if (!enabled) ctx.AutoRecorder?.Stop();
+      if (!enabled)
+      {
+        ctx.AutoRecorder?.Stop();
+        ReleaseAutoRotatorOnAutoTuneStop();
+      }
       else
       {
         LastAutoSelectedMonitoredSatId = null;
@@ -1461,8 +1465,7 @@ namespace SkyRoof
     {
       if (!ctx.Settings.Satellites.AutoMonitorEnabled)
       {
-        if (LastAutoRotatorSatId != null)
-          EndAutoRotatorSession();
+        ReleaseAutoRotatorOnAutoTuneStop();
         return;
       }
       if (!ctx.Settings.Rotator.Enabled) return;
@@ -1572,6 +1575,18 @@ namespace SkyRoof
       if (ctx.SatelliteSelector.SelectedPass != null)
         ctx.SatelliteSelector.SetSelectedPass(null);
       RotatorWidget.Park();
+    }
+
+    // stopping auto-tuning must not yank the antenna off a sat the operator is already using:
+    // if tracking is on, just drop auto-rotator ownership and leave Track enabled.
+    private void ReleaseAutoRotatorOnAutoTuneStop()
+    {
+      if (LastAutoRotatorSatId == null) return;
+
+      if (RotatorWidget.IsTracking)
+        LastAutoRotatorSatId = null;
+      else
+        EndAutoRotatorSession();
     }
 
     private void AutoParkRotatorBetweenPasses(DateTime nowUtc)

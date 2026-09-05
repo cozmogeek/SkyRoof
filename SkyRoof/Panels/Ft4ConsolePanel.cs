@@ -252,7 +252,10 @@ namespace SkyRoof
       {
         Sender.StartSending();
         if (Sender.Mode == SenderMode.Sending) // no sending if was tuning 
+        {
           TxCountdown = ctx.Settings.Ft4Console.Transmit.TxWatchDog * 4;
+          StopAutoTuningForTransmit();
+        }
       }
 
       UpdateTxButtons();
@@ -271,7 +274,11 @@ namespace SkyRoof
       if (Sender.Mode == SenderMode.Tuning)
         Sender.Stop();
       else
+      {
         Sender.StartTuning();
+        if (Sender.Mode == SenderMode.Tuning)
+          StopAutoTuningForTransmit();
+      }
 
       UpdateTxButtons();
     }
@@ -321,6 +328,13 @@ namespace SkyRoof
 
       MessageBox.Show("FT4 transmit is not enabled in Settings.", "SkyRoof", MessageBoxButtons.OK, MessageBoxIcon.Information);
       return false;
+    }
+
+    // transmitting means the operator is using this satellite; stop auto-tuning so it cannot
+    // switch away (rotator tracking stays on if it was already following).
+    private void StopAutoTuningForTransmit()
+    {
+      ctx.MainForm?.SetAutoMonitorEnabled(false);
     }
 
     private void TxSpinner_ValueChanged(object sender, EventArgs e)
@@ -618,6 +632,8 @@ namespace SkyRoof
       Sender.SetMessage(Sequencer.Message!);
       if (wasSending && oddChanged) Sender.Stop();
       Sender.StartSending();
+      if (Sender.Mode == SenderMode.Sending)
+        StopAutoTuningForTransmit();
       TxCountdown = ctx.Settings.Ft4Console.Transmit.TxWatchDog * NativeFT4Coder.TIME_SLOTS_PER_MINUTE;
 
       TxMessageLabel.Text = Sequencer.Message!;
