@@ -157,6 +157,10 @@ namespace SkyRoof
         case "SkyRoof.RotatorSettings.StepSize":
           ValidateFloat(e, 30, 0.01f);
           break;
+
+        case "SkyRoof.RecordingSettings.BasebandIqMsps":
+          ValidateDouble(e, 20, 0);
+          break;
       }
 
       if (canChange) ChangedFields.Add(label);
@@ -202,6 +206,12 @@ namespace SkyRoof
     private void ValidateFloat(PropertyValueChangedEventArgs e, float max, float min = 0)
     {
       float cleanValue = Math.Max(min, Math.Min(max, (float)e.ChangedItem.Value));
+      e.ChangedItem.PropertyDescriptor.SetValue(e.ChangedItem.Parent.Value, cleanValue);
+    }
+
+    private void ValidateDouble(PropertyValueChangedEventArgs e, double max, double min = 0)
+    {
+      double cleanValue = Math.Max(min, Math.Min(max, (double)e.ChangedItem.Value));
       e.ChangedItem.PropertyDescriptor.SetValue(e.ChangedItem.Parent.Value, cleanValue);
     }
 

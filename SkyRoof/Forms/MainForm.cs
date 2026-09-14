@@ -1233,7 +1233,8 @@ namespace SkyRoof
       {
         if (ctx.Sdr?.Info == null) { ctx.AutoRecorder.Stop(); return; }
         wideband = true;
-        iqRate = (int)Math.Round(ctx.Sdr.Info.SampleRate);
+        int sdrRate = (int)Math.Round(ctx.Sdr.Info.SampleRate);
+        iqRate = ctx.Settings.Recording.GetWidebandIqRate(sdrRate);
       }
 
       ctx.AutoRecorder.EnsureRecording(sat.sat_id, sat.name, maxElDeg, entry.AutoRecordMode, iqRate, wideband);

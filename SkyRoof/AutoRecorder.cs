@@ -15,12 +15,14 @@ namespace SkyRoof
     private bool isAudio;
     private bool isWideband;
     private int iqSampleRate;
+    private int requestedIqSampleRate;
     private string? satId;
     private string? fileName;
 
     private Channel<WriteChunk>? channel;
     private CancellationTokenSource? writerCts;
     private Task? writerTask;
+    private IqDecimator? decimator;
 
     /// <summary>
     /// extra headroom after AF gain so peaks rarely hit 0 dBFS in the WAV (speaker path can still clip in hardware).
@@ -58,7 +60,7 @@ namespace SkyRoof
         if (wantAudio) wideband = false;
 
         if (output != null && this.satId == satId && isAudio == wantAudio
-          && this.isWideband == wideband && this.iqSampleRate == iqSampleRate)
+          && this.isWideband == wideband && this.requestedIqSampleRate == iqSampleRate)
           return;
 
         Stop_NoLock();
@@ -70,25 +72,43 @@ namespace SkyRoof
         string safeSat = Utils.SanitizeFileNamePart(satName);
         string el = maxElevationDeg == null ? "" : $"_{Math.Clamp(maxElevationDeg.Value, 0, 90):00}deg";
 
-        // Wideband IQ is RF64: classic WAV is capped at 4 GB (~53 s at 10 Msps float IQ).
+        int writeRate = iqSampleRate;
+        int sdrRate = (int)Math.Round(ctx.Sdr?.Info?.SampleRate ?? 0);
+        if (!wantAudio && wideband && sdrRate > iqSampleRate)
+        {
+          try
+          {
+            decimator = new IqDecimator(sdrRate, iqSampleRate);
+            writeRate = decimator.ActualOutputRate;
+          }
+          catch
+          {
+            decimator?.Dispose();
+            decimator = null;
+            writeRate = sdrRate;
+          }
+        }
+
+        // Wideband IQ is RF64: classic WAV is capped at 4 GB (~107 s at 10 Msps cs16 IQ).
         // SDR# baseband player opens wav/raw/rf64/dd; RF64 keeps sample-rate in the header.
         // Audio and 48 kHz slicer IQ stay WAV (small enough for the RIFF limit).
         bool rf64Iq = !wantAudio && wideband;
-        string suffix = wantAudio ? "" : $"_IQ_{iqSampleRate}SPS";
+        string suffix = wantAudio ? "" : $"_IQ_{writeRate}SPS";
         string ext = rf64Iq ? ".rf64" : ".wav";
         fileName = Path.Combine(recordingsDir, $"{utc}Z_{safeSat}{el}{suffix}{ext}");
 
         if (wantAudio)
           output = new WaveFileWriter(fileName, new WaveFormat(SdrConst.AUDIO_SAMPLING_RATE, 16, 1));
         else if (rf64Iq)
-          output = new Rf64WaveWriter(fileName, iqSampleRate, channels: 2, bitsPerSample: 32, ieeeFloat: true);
+          output = new Rf64WaveWriter(fileName, writeRate, channels: 2, bitsPerSample: 16, ieeeFloat: false);
         else
-          output = new WaveFileWriter(fileName, WaveFormat.CreateIeeeFloatWaveFormat(iqSampleRate, 2));
+          output = new WaveFileWriter(fileName, new WaveFormat(writeRate, 16, 2));
 
         this.satId = satId;
         isAudio = wantAudio;
         isWideband = wideband;
-        this.iqSampleRate = iqSampleRate;
+        this.requestedIqSampleRate = iqSampleRate;
+        this.iqSampleRate = writeRate;
 
         int queueDepth = wideband ? 256 : 64;
         channel = Channel.CreateBounded<WriteChunk>(new BoundedChannelOptions(queueDepth)
@@ -134,10 +154,13 @@ namespace SkyRoof
 
       output?.Dispose();
       output = null;
+      decimator?.Dispose();
+      decimator = null;
       satId = null;
       fileName = null;
       isWideband = false;
       iqSampleRate = 0;
+      requestedIqSampleRate = 0;
       writerCts?.Dispose();
       writerCts = null;
       channel = null;
@@ -176,34 +199,62 @@ namespace SkyRoof
 
     public void AddIqSamples(Complex32[] data, int count, bool wideband)
     {
-      ChannelWriter<WriteChunk>? w;
+      ChannelWriter<WriteChunk>? w = null;
+      byte[]? buffer = null;
+      int bytes = 0;
       lock (gate)
       {
         if (output == null || isAudio || isWideband != wideband) return;
         if (count <= 0) return;
         w = channel?.Writer;
+        if (w == null) return;
+
+        Complex32[] src = data;
+        int n = count;
+        if (decimator != null)
+        {
+          try
+          {
+            n = decimator.Process(data, count);
+            src = decimator.OutputData;
+          }
+          catch
+          {
+            return;
+          }
+        }
+        if (n <= 0) return;
+
+        // stereo PCM16 => 4 bytes per IQ sample (I,Q) — SatDump cs16
+        bytes = n * 2 * sizeof(short);
+        buffer = ArrayPool<byte>.Shared.Rent(bytes);
+
+        for (int i = 0; i < n; i++)
+        {
+          int o = i * 4;
+          WriteInt16Le(buffer, o, FloatToPcm16(src[i].Real));
+          WriteInt16Le(buffer, o + 2, FloatToPcm16(src[i].Imaginary));
+        }
+
+        decimator?.ConsumeOutput();
       }
-      if (w == null) return;
 
-      // stereo IEEE float32 => 8 bytes per IQ sample (I,Q) — SatDump cf32
-      int bytes = count * 2 * sizeof(float);
-      byte[] buffer = ArrayPool<byte>.Shared.Rent(bytes);
-
-      for (int i = 0; i < count; i++)
-      {
-        int o = i * 8;
-        WriteFloatLe(buffer, o, data[i].Real);
-        WriteFloatLe(buffer, o + 4, data[i].Imaginary);
-      }
-
+      if (w == null || buffer == null) return;
       var chunk = new WriteChunk { Buffer = buffer, Count = bytes };
       if (!w.TryWrite(chunk))
         ArrayPool<byte>.Shared.Return(buffer);
     }
 
-    private static void WriteFloatLe(byte[] buffer, int offset, float value)
+    private static short FloatToPcm16(float value)
     {
-      BitConverter.TryWriteBytes(buffer.AsSpan(offset, 4), value);
+      float v = Math.Clamp(value, -1f, 1f);
+      return (short)Math.Clamp(v * short.MaxValue, short.MinValue, short.MaxValue);
+    }
+
+    private static void WriteInt16Le(byte[] buffer, int offset, short value)
+    {
+      buffer[offset] = (byte)(value & 0xFF);
+      buffer[offset + 1] = (byte)((value >> 8) & 0xFF);
     }
 
     private async Task WriterLoop(CancellationToken ct)
