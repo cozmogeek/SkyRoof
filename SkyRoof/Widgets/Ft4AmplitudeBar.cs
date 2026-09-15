@@ -25,7 +25,13 @@ namespace SkyRoof
 
     public void UpdateAmplitude(DataEventArgs<float> e, float scale=1)
     {
-      float max = scale * e.Data.Take(e.Count).Max(Math.Abs);
+      // an empty block has no amplitude to show. LINQ would throw on it, and this runs on the
+      // audio thread for every block, so scan the block with a plain loop
+      if (e.Count == 0) return;
+
+      float max = 0;
+      for (int i = 0; i < e.Count; i++) max = Math.Max(max, Math.Abs(e.Data[i]));
+      max *= scale;
 
       if (max > Amplitude)
         Amplitude = max;

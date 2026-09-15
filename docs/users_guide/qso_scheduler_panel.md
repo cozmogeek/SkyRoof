@@ -25,7 +25,8 @@ Each item in the list represents one common visibility window for the next 14 da
 - **Orbit number** follows the satellite name;
 - **Wait time** on the upper right shows how long until the window starts, or **Now** in green
   if the window is already in progress;
-- **Start and end times** of the common segment are displayed in local time (the label shows
+- **Start and end times** of the common segment are displayed in the time zone selected on the
+  [Clock](clock.md) widget, marked with **Z** for UTC or **LT** for local time (the label shows
   **Geostationary** instead for geostationary satellites);
 - **Duration** of the common segment and the maximum elevation of the satellite from each station during
   that segment;

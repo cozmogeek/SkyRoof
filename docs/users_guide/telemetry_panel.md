@@ -206,6 +206,11 @@ Each child node is a single decoded frame, labeled with the time of arrival, the
 bytes, and, for AX.25 frames, the source and destination addresses. The newest pass is expanded
 automatically, and the view scrolls to follow new frames as long as the latest frame is selected.
 
+The times in the node captions are written in the zone that was selected on the [Clock](clock.md)
+widget when the node was created, and each of them is marked with **Z** for UTC or **LT** for local
+time. Switching the mode does not rewrite the captions already in the tree, since they are a record of
+what was received; the nodes added after the switch use the new mode.
+
 Frames are not the only children a pass can have. An [SSTV](recevie_sstv.md) or
 [SSDV](receive_ssdv.md) image and a [voice message](receive_voice.md) each get a node of their own,
 which is updated in place as the picture or the recording is built up, and which shows the picture or

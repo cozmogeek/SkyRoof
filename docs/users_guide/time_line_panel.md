@@ -10,3 +10,7 @@ The TimeLine panel shows the satellite elevation chart as a function of time for
     [Sky View panel](sky_view_panel.md).
 
 The dark part of the chart represents the past time.
+
+The time scale is drawn in the time zone selected on the [Clock](clock.md) widget. The date labels name
+the mode as **(UTC)** or **(Local)**, and the marker in the top right corner of the panel shows **Z** or
+**LT**.

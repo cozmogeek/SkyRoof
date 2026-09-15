@@ -22,7 +22,7 @@ Specify if a new ADIF file should be created every day, month or year, using the
 
 ## Entering The QSO Data
 
-- **UTC** - this field shows the current UTC time. Click on it to freeze the clock or to make it run again, or enter the date and time manually if saving an old QSO;
+- **UTC** - this field shows the current UTC time, and stays in UTC whatever mode the [Clock](clock.md) widget is set to, since the ADIF format requires UTC. Click on it to freeze the clock or to make it run again, or enter the date and time manually if saving an old QSO;
 - **Band, Mode, Sat** - These fields are populated automatically, based on the currently selected satellite transmitter. You can select different values from the drop-down lists, or type them in, if needed;
 - **Call** - as you enter the callsign, the program tries to guess its grid square, US state and operator's name (see below).
 - **Grid, State** - if the program fails to guess these values, or guesses them incorrectly, enter them manually;

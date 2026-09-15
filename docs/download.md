@@ -4,7 +4,7 @@
 
 ### Current Version
 
-[SkyRoof v.1.51](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.51/SkyRoofSetup-v.1.51.exe)
+[SkyRoof v.1.53](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.53/SkyRoofSetup-v.1.53.exe)
 
 <br>
 
@@ -15,6 +15,17 @@ See [All Releases](https://github.com/VE3NEA/SkyRoof/releases)
 <br>
 
 ### Release Notes
+
+#### v.1.53
+
+- fragments of SSDV/JPEG images are combined across satellite passes
+- SSDV/JPEG files with missing fragments are repaired when possible
+
+#### v.1.52
+
+- UTC / Local time switch in the clock now applies to all panels
+- transmitters-override.json file updated - TNX Marcus PY2PLL
+- error in the Slicer fixed
 
 #### v.1.51
 

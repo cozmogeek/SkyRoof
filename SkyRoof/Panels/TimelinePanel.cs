@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Security.Policy;
 using Serilog;
+using VE3NEA.Clock;
 using WeifenLuo.WinFormsUI.Docking;
 
 namespace SkyRoof
@@ -72,7 +73,9 @@ namespace SkyRoof
     {
       ValidateZoom();
       ValidateLeftSpan();
-      var now = DateTime.Now;
+      // the scale is drawn in the zone the clock widget is set to. DrawPasses converts back to
+      // UTC, so the humps land on the same pixels in either mode
+      var now = ClockWidget.Now;
 
       DrawBg(e.Graphics, now);
       DrawDateLabels(e.Graphics, now);
@@ -122,9 +125,18 @@ namespace SkyRoof
         x2 = Math.Min(ClientSize.Width, TimeToPixel(date2, now));
         g.DrawLine(SystemPens.ControlText, x2, ClientSize.Height - ScaleHeight, x2, ClientSize.Height);
 
-        string label = $"{date1:MMM dd}";
+        // the date names the zone the whole scale is drawn in. Where the day is too narrow for
+        // that, the date alone is shown rather than nothing
+        string label = $"{date1:MMM dd} ({ClockWidget.ModeName})";
         var size = TextRenderer.MeasureText(label, Font, Size, TextFormatFlags.NoPadding);
         size.Width += 3;
+
+        if (x2 - x1 <= size.Width + 15)
+        {
+          label = $"{date1:MMM dd}";
+          size = TextRenderer.MeasureText(label, Font, Size, TextFormatFlags.NoPadding);
+          size.Width += 3;
+        }
 
         if (x2 - x1 > size.Width + 15)
           g.DrawString(label, Font, SystemBrushes.ControlText, (x1 + x2 - size.Width) / 2, ClientSize.Height - size.Height - 1);
@@ -305,7 +317,7 @@ namespace SkyRoof
 
     private void SatelliteTimelineControl_MouseWheel(object? sender, MouseEventArgs e)
     {
-      var now = DateTime.Now;
+      var now = ClockWidget.Now;
       var timeUnderCursor = PixelToTime(e.X, now);
 
       int dZoom = e.Delta / 120;// WHEEL_DELTA;

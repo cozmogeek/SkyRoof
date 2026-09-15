@@ -13,3 +13,6 @@ Click on a pass to make the satellite selected and to view its trajectory on the
 
 Move the cursor over the satellite name to view extra information on the mouse tooltip, or right-click to open
 the [Satellite Details window](satellite_details_window.md).
+
+The pass times, both in the list and on the tooltips, are displayed in the time zone selected on the
+[Clock](clock.md) widget, marked with **Z** for UTC or **LT** for local time.

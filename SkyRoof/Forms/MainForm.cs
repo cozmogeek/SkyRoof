@@ -5,6 +5,7 @@ using MathNet.Numerics;
 using Serilog;
 using SGPdotNET.Observation;
 using VE3NEA;
+using VE3NEA.Clock;
 using WeifenLuo.WinFormsUI.Docking;
 
 namespace SkyRoof
@@ -33,6 +34,7 @@ namespace SkyRoof
       SatelliteSelecionWidget.ctx = ctx;
       FrequencyWidget.ctx = ctx;
       GainWidget.ctx = ctx;
+      Clock.ctx = ctx;
       ctx.Announcer.ctx = ctx;
       ctx.AutoSelector.ctx = ctx;
       ctx.AutoSelector.Initialize();
@@ -940,8 +942,8 @@ namespace SkyRoof
       else SatDataLedLabel.ForeColor = Color.Lime;
 
       string tooltip =
-        $"Satellite List:  {sett.LastDownloadTime.ToLocalTime():yyyy-MM-dd HH:mm}\n" +
-        $"TLE:                 {sett.LastTleTime.ToLocalTime():yyyy-MM-dd HH:mm}" +
+        $"Satellite List:  {ClockWidget.Stamp(sett.LastDownloadTime, "yyyy-MM-dd HH:mm")}\n" +
+        $"TLE:                 {ClockWidget.Stamp(sett.LastTleTime, "yyyy-MM-dd HH:mm")}" +
         (DownloadOk ? "" : "\nDownload failed");
 
       SatDataStatusLabel.ToolTipText = SatDataLedLabel.ToolTipText = tooltip;
@@ -1260,6 +1262,26 @@ namespace SkyRoof
       CheckDownloadSatelliteList();
       CheckDownloadTle();
       ctx.AmsatStatusLoader.GetStatusesAsync();
+    }
+
+
+
+
+    //----------------------------------------------------------------------------------------------
+    //                                  time display mode
+    //----------------------------------------------------------------------------------------------
+    // called by the clock widget when the user switches between UTC and local time. The panels
+    // listed here format their times on every paint, so redrawing them is all that is needed.
+    // The telemetry tree is not redrawn: its captions are dated records of what was received
+    // and each one carries the marker of the mode it was written in
+    internal void RefreshTimeDisplay()
+    {
+      ctx.PassesPanel?.Invalidate(true);
+      ctx.TimelinePanel?.Invalidate(true);
+      ctx.QsoSchedulerPanel?.Invalidate(true);
+      ctx.GroupViewPanel?.Invalidate(true);
+      ctx.SkyViewPanel?.Invalidate(true);
+      ctx.RecorderPanel?.Invalidate(true);
     }
 
 

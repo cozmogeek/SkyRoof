@@ -3,6 +3,7 @@ using SGPdotNET.Observation;
 using SGPdotNET.TLE;
 using SGPdotNET.Util;
 using VE3NEA;
+using VE3NEA.Clock;
 using static SkyRoof.SatellitePass;
 
 namespace SkyRoof
@@ -85,10 +86,10 @@ namespace SkyRoof
       else if (StartTime < DateTime.UtcNow) tooltip[0] = $"LOS ↓  in {Utils.TimespanToString(EndTime - DateTime.UtcNow, showSeconds)}";
       else tooltip[0] = $"AOS ↑  in {Utils.TimespanToString(StartTime - DateTime.UtcNow, showSeconds)}";
 
-      tooltip[1] = $"AOS azimuth {aos?.Azimuth.Degrees:F0}º at {StartTime.ToLocalTime():yyyy-MM-dd HH:mm:ss}";
-      tooltip[2] = $"LOS azimuth {los?.Azimuth.Degrees:F0}º at {EndTime.ToLocalTime():yyyy-MM-dd HH:mm:ss}";
+      tooltip[1] = $"AOS azimuth {aos?.Azimuth.Degrees:F0}º at {ClockWidget.Stamp(StartTime, "yyyy-MM-dd HH:mm:ss")}";
+      tooltip[2] = $"LOS azimuth {los?.Azimuth.Degrees:F0}º at {ClockWidget.Stamp(EndTime, "yyyy-MM-dd HH:mm:ss")}";
       tooltip[3] = $"Duration: {Utils.TimespanToString(EndTime - StartTime, false)}";
-      tooltip[4] = $"Elevation: {obs1?.Elevation.Degrees:F0}º {upDpwn}  (Max {MaxElevation:F0}º at {CulminationTime.ToLocalTime():HH:mm})";
+      tooltip[4] = $"Elevation: {obs1?.Elevation.Degrees:F0}º {upDpwn}  (Max {MaxElevation:F0}º at {ClockWidget.Stamp(CulminationTime, "HH:mm")})";
       tooltip[5] = $"Orbit: #{OrbitNumber}";
 
       return tooltip;

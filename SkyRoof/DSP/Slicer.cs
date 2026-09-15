@@ -222,6 +222,11 @@ namespace SkyRoof
 
       // get args for events
       int outputCount = RationalResamplerOutputBuffer.Count;
+
+      // the resamplers produced nothing yet: emit no event rather than an empty block, which some
+      // consumers cannot make sense of. the output buffer is already empty, nothing to clean up
+      if (outputCount == 0) return;
+
       var audioArgs = FloatArgsPool.Rent(outputCount);
       var iqArgs = ComplexArgsPool.Rent(outputCount);
       audioArgs.Utc = args.Utc;

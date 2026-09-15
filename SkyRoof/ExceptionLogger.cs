@@ -1,10 +1,23 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Serilog;
+using Serilog.Core;
+using Serilog.Events;
 using SharpGL;
 
 namespace VE3NEA
 {
+  // Serilog timestamps log events with DateTimeOffset.Now and the file sink renders them as
+  // written, so a UTC stamp has to be attached as a property of its own
+  public class UtcTimeEnricher : ILogEventEnricher
+  {
+    public void Enrich(LogEvent logEvent, ILogEventPropertyFactory factory)
+    {
+      logEvent.AddPropertyIfAbsent(factory.CreateProperty("Utc", logEvent.Timestamp.UtcDateTime));
+    }
+  }
+
+
   public class ExceptionLogger
   {
     private static NativeSoapySdr.SoapySDRLogHandlerDelegate LogHandlerDelegate = new(SoapySdrLogHandler);
@@ -14,9 +27,13 @@ namespace VE3NEA
     {
       string appName = AppDomain.CurrentDomain.FriendlyName ?? "log";
       string fileName = Path.Combine(Utils.GetUserDataFolder(), "Logs", $"{appName}_.txt");
+      // the system log is timestamped in UTC regardless of the time display mode, so that logs
+      // from different users, and from different sides of a DST change, can be compared directly
       Log.Logger = new LoggerConfiguration().MinimumLevel.Debug()
-          .WriteTo.File(fileName, 
-            rollingInterval: RollingInterval.Day, 
+          .Enrich.With<UtcTimeEnricher>()
+          .WriteTo.File(fileName,
+            outputTemplate: "{Utc:yyyy-MM-dd HH:mm:ss.fff}Z [{Level:u3}] {Message:lj}{NewLine}{Exception}",
+            rollingInterval: RollingInterval.Day,
             fileSizeLimitBytes: 3_000_000,
             rollOnFileSizeLimit: true,
             retainedFileCountLimit: 20,

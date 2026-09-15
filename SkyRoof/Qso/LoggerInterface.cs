@@ -195,8 +195,10 @@ namespace SkyRoof
       var sat = ctx.SatelliteSelector.SelectedSatellite;
       if (sat == null || sat.AmsatEntries.Count == 0) return;
 
-      var pass = ctx.HamPasses.GetNextPass(sat);
-      if (pass == null || pass.StartTime > DateTime.UtcNow || pass.EndTime < DateTime.UtcNow) return;
+      // a qso is usually entered in the last seconds of the pass or just after LOS, so the pass that just
+      // ended still counts as the pass this qso was made on. only a pass that has not started yet is not
+      var pass = ctx.HamPasses.GetCurrentOrNextPass(sat, SatellitePasses.LosGracePeriod);
+      if (pass == null || pass.StartTime > DateTime.UtcNow) return;
 
       // ask only once
       var info = (sat.AmsatEntries[0], pass.OrbitNumber);

@@ -35,6 +35,9 @@ colored markers along the top edge of the waveform:
 
 Move the mouse cursor over a marker to see a tooltip with the details of that event.
 
+The event time in the tooltip is shown in the time zone selected on the [Clock](clock.md) widget,
+marked with **Z** for UTC or **LT** for local time.
+
 ## Playback
 
 Click **Play Back** to play back the recording. The button turns green and a red vertical line

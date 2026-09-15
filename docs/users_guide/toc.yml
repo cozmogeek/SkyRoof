@@ -55,6 +55,8 @@ items:
       href: gain_control.md
     - name: Rotator Control
       href: rotator_control.md
+    - name: Clock
+      href: clock.md
   - name: Panels
     items:
     - name: Current Group

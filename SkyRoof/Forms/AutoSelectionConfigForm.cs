@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Forms;
 using CSCore.XAudio2;
 using VE3NEA;
+using VE3NEA.Clock;
 
 namespace SkyRoof
 {
@@ -139,7 +140,7 @@ namespace SkyRoof
 
     private static string PassLabel(SatellitePass pass)
     {
-      return $"{pass.StartTime.ToLocalTime():MM-dd HH:mm}   ·   {Utils.TimespanToString(pass.EndTime - pass.StartTime, false)}   ·   {pass.MaxElevation:F0}°";
+      return $"{ClockWidget.Stamp(pass.StartTime, "MM-dd HH:mm")}   ·   {Utils.TimespanToString(pass.EndTime - pass.StartTime, false)}   ·   {pass.MaxElevation:F0}°";
     }
 
     // three checkbox glyphs (unchecked / checked / indeterminate) for the tree's StateImageList,

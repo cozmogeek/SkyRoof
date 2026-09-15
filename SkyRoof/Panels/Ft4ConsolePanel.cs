@@ -471,9 +471,11 @@ namespace SkyRoof
       separator.SlotNumber = slot;
       separator.Utc = slotTime;
 
+      // FT4 slots are counted from a UTC instant and are always shown in UTC, whatever
+      // the time display mode is, because that is the time the mode itself is aligned to
       separator.Tokens = [
         new(FontAwesomeIcons.Circle),
-        new($"{slotTime:HH:mm:ss}"),
+        new($"{slotTime:HH:mm:ss}Z"),
         new(satelliteName),
         new(bandName),
         new(new string('-', 20)) // '̶'

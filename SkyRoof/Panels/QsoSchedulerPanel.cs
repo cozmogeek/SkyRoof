@@ -4,6 +4,7 @@ using SGPdotNET.Observation;
 using SGPdotNET.CoordinateSystem;
 using SGPdotNET.Util;
 using VE3NEA;
+using VE3NEA.Clock;
 using WeifenLuo.WinFormsUI.Docking;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
@@ -269,8 +270,9 @@ namespace SkyRoof
       e.Graphics.DrawString(text, PredictionList.Font, SystemBrushes.WindowText, rect);
 
       // start/end time for the common segment
-      text = overlap.Geostationary ?
-        "Geostationary" : $"{overlap.CommonStart.ToLocalTime():yyyy-MM-dd  HH:mm:ss}  to  {overlap.CommonEnd.ToLocalTime():HH:mm:ss}";
+      text = overlap.Geostationary ? "Geostationary" :
+        $"{ClockWidget.FromUtc(overlap.CommonStart):yyyy-MM-dd  HH:mm:ss}  to  " +
+        $"{ClockWidget.FromUtc(overlap.CommonEnd):HH:mm:ss} {ClockWidget.Suffix}";
       size = e.Graphics.MeasureString(text, PredictionList.Font);
       rect = new RectangleF(e.Bounds.X, e.Bounds.Y + e.Bounds.Height - size.Height - 2, size.Width, size.Height);
       e.Graphics.DrawString(text, PredictionList.Font, SystemBrushes.WindowText, rect);

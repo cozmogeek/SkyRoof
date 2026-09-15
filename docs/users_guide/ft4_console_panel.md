@@ -23,6 +23,8 @@ Move the mouse cursor over an FT4 signal trace on the waterfall to see sender's 
 
 The message list shows transmitted and received messages, including your own messages coming back from the satellite.
 
+The separator lines between the messages are stamped with the time of the FT4 slot, always in UTC and marked with **Z**. These times stay in UTC whatever mode the [Clock](clock.md) widget is set to, because the FT4 slots themselves are aligned to UTC.
+
 The list auto scrolls as the new messages are added. To disable auto-scrolling, for example, when looking at the old messages, just scroll the list up manually. To resume auto-scrolling, scroll it down to the last entry. 
 
 When the mouse cursor is moved over the list, auto-scrolling is temporarily disabled to prevent clicks on a wrong entry. The frozen status is indicated by a blue frame around the list panel. The list un-freezes when you click on an entry or move the cursor out of the list, and when the cursor has not been moving for 2 seconds.

@@ -153,6 +153,11 @@ namespace SkyRoof
     protected readonly Context ctx;
     protected TimeSpan PredictionTimeSpan;
     private readonly TimeSpan HistoryTimeSpan = TimeSpan.FromMinutes(30);
+    // longer than any LEO pass, so a search that starts this far back cannot begin inside a pass in progress
+    private readonly TimeSpan MaxPassDuration = TimeSpan.FromMinutes(30);
+    // how long after LOS an event still belongs to the pass that just ended. well short of the gap to the
+    // next pass of the same satellite, so the two can never be confused
+    internal static readonly TimeSpan LosGracePeriod = TimeSpan.FromMinutes(2);
 
     private DateTime LastPredictionTime = DateTime.MinValue;
 
@@ -261,19 +266,25 @@ namespace SkyRoof
       return ComputePassesFor(satellite, now, now.AddDays(1)).OrderBy(pass => pass.StartTime).FirstOrDefault();
     }
 
-    /// <summary>
-    /// The pass currently in progress for <paramref name="satellite"/>, else the next one.
-    /// <see cref="GetNextPass"/> starts its search at *now*, so mid-pass it can roll to the following
-    /// orbit (AOS at 0° elevation) and make the rotator look like it is homing.
-    /// </summary>
-    internal SatellitePass? GetCurrentOrNextPass(SatnogsDbSatellite? satellite)
+    // the pass in progress if there is one, otherwise the next one. GetNextPass cannot answer this near LOS:
+    // its search starts at "now", and SGP.NET needs two consecutive above-horizon samples to open a visibility
+    // period, so a pass with less than one time step left is never seen and the search rolls to the next orbit.
+    // starting the search before the earliest possible AOS of a pass in progress keeps that pass visible for
+    // its whole duration.
+    // grace keeps a pass that has just ended current for that much longer, so that an event which arrives
+    // seconds after LOS - a logged qso, a decoder's final flush - is attributed to the orbit it belongs to
+    // rather than to the next one, an hour or more ahead
+    internal SatellitePass? GetCurrentOrNextPass(SatnogsDbSatellite? satellite, TimeSpan grace = default)
     {
       if (satellite == null) return null;
 
       var now = DateTime.UtcNow;
-      return GetPassesSnapshot().FirstOrDefault(p =>
-          p.Satellite.sat_id == satellite.sat_id && p.StartTime <= now && p.EndTime > now)
-        ?? GetNextPass(satellite);
+      // a pass that ended "grace" ago may have opened that much earlier too, so the search starts back far
+      // enough to see all of it
+      return ComputePassesFor(satellite, now - MaxPassDuration - grace, now.AddDays(1))
+        .Where(pass => pass.EndTime > now - grace)
+        .OrderBy(pass => pass.StartTime)
+        .FirstOrDefault();
     }
   }
 }

@@ -109,7 +109,7 @@ namespace SkyRoof
       using var response = Http.Send(request);
 
       if (response.IsSuccessStatusCode)
-        Log.Information($"SatNOGS frame uploaded ({(int)response.StatusCode}) at {item.Timestamp:HH:mm:ss}");
+        Log.Information($"SatNOGS frame uploaded ({(int)response.StatusCode}), frame time {item.Timestamp:HH:mm:ss}Z");
       else
       {
         // read the response body so the log shows the server's actual error (e.g. bad timestamp, bad

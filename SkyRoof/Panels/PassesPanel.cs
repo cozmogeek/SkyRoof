@@ -1,6 +1,7 @@
 ﻿using System.Data;
 using WeifenLuo.WinFormsUI.Docking;
 using VE3NEA;
+using VE3NEA.Clock;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using static SkyRoof.GroupViewPanel;
 using Serilog;
@@ -248,8 +249,9 @@ namespace SkyRoof
       e.Graphics.DrawString(text, listViewEx1.Font, SystemBrushes.WindowText, rect);
 
       // start/end time
-      text = pass.Geostationary ?
-        "Geostationary" : $"{pass.StartTime.ToLocalTime():yyyy-MM-dd  HH:mm:ss}  to  {pass.EndTime.ToLocalTime():HH:mm:ss}";
+      text = pass.Geostationary ? "Geostationary" :
+        $"{ClockWidget.FromUtc(pass.StartTime):yyyy-MM-dd  HH:mm:ss}  to  " +
+        $"{ClockWidget.FromUtc(pass.EndTime):HH:mm:ss} {ClockWidget.Suffix}";
       size = e.Graphics.MeasureString(text, listViewEx1.Font);
       rect = new RectangleF(e.Bounds.X, e.Bounds.Y + e.Bounds.Height - size.Height - 2, size.Width, size.Height);
       e.Graphics.DrawString(text, listViewEx1.Font, SystemBrushes.WindowText, rect);

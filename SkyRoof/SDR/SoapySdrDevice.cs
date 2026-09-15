@@ -143,6 +143,11 @@ namespace VE3NEA
         try
         {
           Stream.ReadStream();
+
+          // a timeout or an overflow yields no samples. an empty block has nothing for the
+          // consumers downstream, so do not pass it on
+          if (Stream.Args.Count == 0) continue;
+
           Stream.Args.Utc = DateTime.UtcNow;
           DataAvailable?.Invoke(this, Stream.Args);
         }

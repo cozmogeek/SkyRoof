@@ -40,7 +40,8 @@ Click **Edit** to open the schedule dialog for the current group.
 
 The tree lists every satellite in the group (except geostationary satellites, which have no passes) as a
 parent node, with its upcoming passes over the next 48 hours as child nodes. Each pass leaf shows its AOS
-local time, duration, and maximum elevation.
+time, duration, and maximum elevation. The AOS time is shown in the zone selected on the
+[Clock](clock.md) widget.
 
 Use the checkboxes to choose which passes take part in the rotation:
 

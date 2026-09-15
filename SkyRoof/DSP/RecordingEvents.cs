@@ -1,4 +1,5 @@
 using System.Text.Json;
+using VE3NEA.Clock;
 
 namespace SkyRoof
 {
@@ -17,7 +18,7 @@ namespace SkyRoof
 
       public string GetTooltipText()
       {
-        string time = Utc.ToLocalTime().ToString("HH:mm:ss");
+        string time = ClockWidget.Stamp(Utc, "HH:mm:ss");
         List<string> lines = EventType switch
         {
           "satellite" => [$"{time} satellite selected"],

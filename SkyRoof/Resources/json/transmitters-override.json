@@ -3,7 +3,7 @@
     "satellite": "NIGHTJAR",
     "norad": 60535,
     "modulation": "GMSK",
-    "baudrate": 4800,
+    "baudrate": 9600,
     "framing": "AX.25 G3RUH"
   },
   "TppBmrNUoudprjLLktfcC2": {
@@ -56,7 +56,10 @@
   "fDywUVLPJc2FMkFoYv7EeV": {
     "satellite": "SNIPE B",
     "norad": 56745,
-    "deviation": 2400
+    "modulation": "FSK",
+    "baudrate": 4800.0,
+    "framing": "AX100 ASM+Golay",
+    "deviation": 740.0
   },
   "ELmEGxaU8aiLrDps6gouPE": {
     "satellite": "GALAPAGOS-UTE-SWSU",
@@ -87,5 +90,326 @@
     "norad": 61772,
     "baudrate": 4800,
     "note": "GMSK USP on 436.540; ~4800 Hz BW -> 4800 Bd (SatNOGS baud 2400 is wrong)"
+  },
+  "GCmN6RULea8dAT7Qoat8z2": {
+    "satellite": "CANVAS",
+    "norad": 68635,
+    "modulation": "GFSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 2900.0
+  },
+  "n8iZUZCE3hDZ5d3CiNwTcH": {
+    "satellite": "UVSQ-SAT-NG",
+    "norad": 63251,
+    "modulation": "BPSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "precoding": "none"
+  },
+  "K9tAh2pFvWimE2sVaQoadt": {
+    "satellite": "SINP-MSU-80 (Scorpion)",
+    "norad": 98427,
+    "modulation": "AFSK",
+    "baudrate": 1180.507,
+    "framing": "AX.25 G3RUH",
+    "deviation": 500.0
+  },
+  "Bv36U7yktTwkwnTxdDWWsH": {
+    "satellite": "Altair",
+    "norad": 61779,
+    "modulation": "AFSK",
+    "baudrate": 1181.2,
+    "framing": "AX.25 G3RUH",
+    "deviation": 500.0
+  },
+  "AXqtfcbYhRBjhX6UZyUgzv": {
+    "satellite": "TOM-2",
+    "norad": 98263,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 4800.0
+  },
+  "Q2AVjZgVJjPwdzSYTdfjom": {
+    "satellite": "TOM-1",
+    "norad": 98264,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 4800.0
+  },
+  "GCsBFfk9H4pCjDQVQ2G5nu": {
+    "satellite": "BOTSAT-1",
+    "norad": 63216,
+    "modulation": "GFSK",
+    "baudrate": 4800.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 1440.0
+  },
+  "ioVJaGdYbJcrvinqsLuyFu": {
+    "satellite": "PHI-1",
+    "norad": 98512,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 1460.0
+  },
+  "MNVE3tp3hdaFexxLLq6tXe": {
+    "satellite": "CloudCT-Precursor",
+    "norad": 98278,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 4800.0
+  },
+  "cDtEvt9z4hhtxj8QiPTtkw": {
+    "satellite": "ROBUSTA-3A",
+    "norad": 60243,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 2400.0
+  },
+  "nCK2oKK7cT2HE7zTPBjCXL": {
+    "satellite": "Colibri-S",
+    "norad": 61746,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "GEOSCAN",
+    "deviation": 4800.0
+  },
+  "QmhNn5HJPxYSHnfZzgYvMg": {
+    "satellite": "TORO-3",
+    "norad": 68481,
+    "modulation": "GFSK",
+    "baudrate": 4800.0,
+    "framing": "AX.25 G3RUH"
+  },
+  "2ZjLbY4VkHtxZhHwDMWy9H": {
+    "satellite": "OBJECT B",
+    "norad": 59918,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "CCSDS",
+    "deviation": 4800.0
+  },
+  "eedU5fS8nzyqVdgC66cxdC": {
+    "satellite": "TOM-3",
+    "norad": 98262,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 4800.0
+  },
+  "LsNURqKhK3hujpzoCtCWzL": {
+    "satellite": "JACK-002",
+    "norad": 68417,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 1500.0
+  },
+  "66849Ugwm8eENQdtCDmjqD": {
+    "satellite": "NETSAT 2",
+    "norad": 46507,
+    "modulation": "GFSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 3200.0
+  },
+  "Mpcmw6q8L7d6LWuCaJszza": {
+    "satellite": "MICE-1",
+    "norad": 98518,
+    "modulation": "GFSK",
+    "baudrate": 4800.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 1440.0
+  },
+  "DKkitSYmcbsaMq7upo6Ldg": {
+    "satellite": "PEARL-1B",
+    "norad": 98330,
+    "modulation": "GMSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH"
+  },
+  "hy9BYssLQDsmjXnbsAJtsd": {
+    "satellite": "OBJECT E",
+    "norad": 69101,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "CCSDS",
+    "deviation": 4800.0
+  },
+  "VXoh2CpZaVTVnJdGyfjVA9": {
+    "satellite": "ERMIS-1",
+    "norad": 68468,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX100 ASM+Golay",
+    "deviation": 4800.0
+  },
+  "nu6oNuZdMwkGVSDFc77GDu": {
+    "satellite": "ARQSAT-1",
+    "norad": 68419,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 1450.0
+  },
+  "hKwRDksN4WTWNKahBZFoPg": {
+    "satellite": "OBJECT A",
+    "norad": 59917,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "CCSDS",
+    "deviation": 4800.0
+  },
+  "arw4iGWiTZDF8yQ64UBZgE": {
+    "satellite": "VIZARD-meteo",
+    "norad": 57189,
+    "modulation": "GMSK",
+    "baudrate": 9600.0,
+    "framing": "USP"
+  },
+  "LypJEJJGG2wenprMk4KMuk": {
+    "satellite": "BALKAN-1",
+    "norad": 62611,
+    "modulation": "GMSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH"
+  },
+  "EaQiAB9f2Ux8VR3GKHduSJ": {
+    "satellite": "Norby-2",
+    "norad": 57179,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 4800.0
+  },
+  "Wi2JPRiwuwqSJUicwteqN2": {
+    "satellite": "TIANYI C",
+    "norad": 64050,
+    "modulation": "FSK",
+    "baudrate": 19200.0,
+    "framing": "AX100 ASM+Golay",
+    "deviation": 4800.0
+  },
+  "jQvqyoiwHfGLHYHTkzH9eP": {
+    "satellite": "Platform-6",
+    "norad": 98405,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 1500.0
+  },
+  "kt2dk3jif3RT2TDvVBtirK": {
+    "satellite": "Replicator-2",
+    "norad": 98267,
+    "modulation": "GFSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 2900.0
+  },
+  "j2BKAnzc6fLzXWd3L3PBsu": {
+    "satellite": "NAPA-1",
+    "norad": 46320,
+    "modulation": "BPSK",
+    "baudrate": 1200.0,
+    "framing": "AX.25 G3RUH",
+    "precoding": "none"
+  },
+  "FhYxQNqWoLZUwMJqErzkW5": {
+    "satellite": "23117C",
+    "norad": 57582,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "CCSDS",
+    "deviation": 4800.0
+  },
+  "WZCAQFKHkya5bstSmS4TEh": {
+    "satellite": "Object A",
+    "norad": 65259,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "CCSDS",
+    "deviation": 4800.0
+  },
+  "2aEqeNj7m3j44kjzpne42U": {
+    "satellite": "Tianyi-26",
+    "norad": 56866,
+    "modulation": "FSK",
+    "baudrate": 19200.0,
+    "framing": "AX100 ASM+Golay",
+    "deviation": 9600.0
+  },
+  "EgwPSzVJacH6GcLw5yExkY": {
+    "satellite": "OBJECT J - 2022-019",
+    "norad": 51832,
+    "modulation": "FSK",
+    "baudrate": 19200.0,
+    "framing": "AX100 ASM+Golay"
+  },
+  "6XbidUMUrTaXtNHymFruZj": {
+    "satellite": "OBJECT D",
+    "norad": 64051,
+    "modulation": "GMSK",
+    "baudrate": 19193.197,
+    "framing": "AX100 ASM+Golay"
+  },
+  "2EcX6csH46wtsdx59xZ6uA": {
+    "satellite": "PW-6U",
+    "norad": 98513,
+    "modulation": "FSK",
+    "baudrate": 19200.957,
+    "framing": "AX100 ASM+Golay",
+    "deviation": 9600.0
+  },
+  "ffQaBkyyE6QznyrpEj7ozG": {
+    "satellite": "FOSSASAT-2E18",
+    "norad": 62686,
+    "modulation": "FSK",
+    "baudrate": 19196.694,
+    "framing": "AX100 ASM+Golay",
+    "deviation": 4800.0
+  },
+  "M2yrFrPhfupHrU25dahRQf": {
+    "satellite": "COSMO",
+    "norad": 68460,
+    "modulation": "GFSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 2900.0
+  },
+  "gTWBBvoxAvDBhtVsexwLsS": {
+    "satellite": "Tenzing",
+    "norad": 48951,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "CCSDS",
+    "deviation": 4800.0
+  },
+  "XZcPJzYjQciqXjy6HRaG6a": {
+    "satellite": "FRAMSAT-1",
+    "norad": 98914,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 1460.0
+  },
+  "FnBBbXC9MC6UGGoNegmc3U": {
+    "satellite": "JACK-004",
+    "norad": 98487,
+    "modulation": "FSK",
+    "baudrate": 9600.0,
+    "framing": "AX.25 G3RUH",
+    "deviation": 4800.0
+  },
+  "VEMs59m2jenob6gH9qfXqh": {
+    "satellite": "OBJECT D",
+    "norad": 69100,
+    "modulation": "FSK",
+    "baudrate": 19200.0,
+    "framing": "AX100 ASM+Golay"
   }
 }

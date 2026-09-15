@@ -220,9 +220,10 @@ namespace SkyRoof
         if (!settingTrack && Path != null)
         {
           // re-optimize the path from the current antenna position, but keep the pass we already have while
-          // it is still live: mid-pass GetNextPass returns the NEXT pass (its AOS is in the future), which
-          // would point the antenna at the wrong direction. only fall back to GetNextPass when the current
-          // pass is over, so pre-positioning for the next pass between passes still works
+          // it is still live: it is the exact pass the operator is tracking, and re-deriving it costs a full
+          // prediction. only look one up when the current pass is over, so pre-positioning for the next pass
+          // between passes still works. no grace period here: once the pass has ended the antenna should be
+          // pre-positioning for the next one, not still pointing at where the satellite set
           var pass = Path.Pass != null && DateTime.UtcNow < Path.Pass.EndTime
             ? Path.Pass
             : ctx.HamPasses.GetCurrentOrNextPass(Path!.Satellite);
