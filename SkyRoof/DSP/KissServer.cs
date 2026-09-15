@@ -19,6 +19,7 @@ namespace SkyRoof
     private TcpListener? Listener;
     private readonly List<TcpClient> Clients = new();
     private readonly object ClientsLock = new();
+    private readonly object SendLock = new();
 
     public bool Active { get; private set; }
     public int ClientCount { get { lock (ClientsLock) return Clients.Count; } }
@@ -125,10 +126,16 @@ namespace SkyRoof
       }
 
       byte[] kiss = Encode(frame.Bytes);
+      var failed = new List<TcpClient>();
 
-      foreach (var client in clients)
-        try { client.GetStream().Write(kiss); }
-        catch (Exception) { RemoveClient(client); }
+      lock (SendLock)
+      {
+        foreach (var client in clients)
+          try { client.GetStream().Write(kiss); }
+          catch (Exception) { failed.Add(client); }
+      }
+
+      foreach (var client in failed) RemoveClient(client);
     }
 
     // wrap the frame bytes in a KISS data frame: FEND, command byte 0x00, escaped payload, FEND

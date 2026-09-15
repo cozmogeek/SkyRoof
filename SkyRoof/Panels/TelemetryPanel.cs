@@ -36,6 +36,12 @@ namespace SkyRoof
     // identity as before. A dial move is therefore a new pass - but not a new set of parameters.
     private double TerrestrialHz => Terrestrial ? ctx.FrequencyControl.RadioLink.DownlinkFrequency : 0;
     private static string DescribeTerrestrial(double hz) => $"Terrestrial {hz / 1e6:F3} MHz";
+    private static string? SatKey(SatnogsDbSatellite? satellite, SatnogsDbTransmitter? transmitter)
+    {
+      var sat = satellite ?? transmitter?.Satellite;
+      if (sat == null) return null;
+      return !string.IsNullOrEmpty(sat.sat_id) ? sat.sat_id : sat.norad_cat_id?.ToString();
+    }
     private bool SatAboveHorizon = false;
     private SignalParams? SignalParams;
     // The ranked co-channel telemetry sibling (§2.3 of cochannel_sstv_pairing_plan) and its own freshly
@@ -61,6 +67,7 @@ namespace SkyRoof
       }
     }
     private TelemetryDecocder? Decoder;
+    private readonly BackgroundTelemetryMonitor BackgroundTelemetry;
     private SatnogsUploader? SatnogsUploader;
     private TelemetryRegistry? TelemetryRegistry;
     // the most recently added tree node: either the pass node itself (before it has any leaves) or its
@@ -160,15 +167,19 @@ namespace SkyRoof
       internal readonly int Orbit;
       // the tuned frequency a terrestrial decode is identified by (§4.9); zero when Transmitter is set
       internal readonly double TerrestrialHz;
+      // true for in-band sats that are not the UI selection; their frames must not drive the status
+      // label, the Discover dialog, or the selected-transmitter upload-hold.
+      internal readonly bool Background;
 
       internal DecodeSnapshot(SatnogsDbSatellite? satellite, SatnogsDbTransmitter? transmitter, SignalParams signalParams, int orbit,
-        double terrestrialHz = 0)
+        double terrestrialHz = 0, bool background = false)
       {
         Satellite = satellite;
         Transmitter = transmitter;
         SignalParams = signalParams;
         Orbit = orbit;
         TerrestrialHz = terrestrialHz;
+        Background = background;
       }
     }
 
@@ -387,8 +398,11 @@ namespace SkyRoof
     internal class TxPassInfo
     {
       internal DateTime StartTime = DateTime.Now;
+      internal SatnogsDbSatellite? Satellite;
       internal SatnogsDbTransmitter? Transmitter;
+      internal readonly List<(SatnogsDbTransmitter? Tx, SignalParams? Params)> Sources = new();
       internal int Orbit;
+      internal double MaxElevationDeg = double.NaN;
       // the tuned frequency this terrestrial pass node is keyed on (§4.9); zero when Transmitter is set
       internal double TerrestrialHz;
       internal SignalParams? SignalParams;
@@ -398,32 +412,58 @@ namespace SkyRoof
       internal double MaxSnrDb = double.NaN;
       internal bool HasValidFrame = false;
 
-      internal TxPassInfo(SatnogsDbTransmitter? transmitter, int orbit, double terrestrialHz = 0)
+      internal TxPassInfo(SatnogsDbSatellite? satellite, SatnogsDbTransmitter? transmitter, int orbit,
+        double terrestrialHz, SignalParams? signalParams, double maxElevationDeg = double.NaN)
       {
+        Satellite = satellite ?? transmitter?.Satellite;
         Transmitter = transmitter;
         Orbit = orbit;
         TerrestrialHz = terrestrialHz;
+        SignalParams = signalParams;
+        MaxElevationDeg = maxElevationDeg;
+        NoteSource(transmitter, signalParams);
       }
 
-      // terrestrial has neither uuid nor orbit to match on, so its pass node is keyed on the tuned
-      // frequency: a dial move starts a new node, and a satellite pass never matches a terrestrial one (§4.9)
-      internal bool IsSame(SatnogsDbTransmitter? transmitter, int orbit, double terrestrialHz)
+      // one trunk per satellite+orbit (or terrestrial frequency). Transmitters of the same bird
+      // in the same pass share the node so interleaved background decodes do not spawn a forest.
+      internal bool IsSamePass(SatnogsDbSatellite? satellite, SatnogsDbTransmitter? transmitter, int orbit,
+        double terrestrialHz)
       {
-        if (Transmitter == null || transmitter == null)
+        if (transmitter == null || Transmitter == null)
           return Transmitter == null && transmitter == null && TerrestrialHz == terrestrialHz;
-        return Transmitter.uuid == transmitter.uuid && Orbit == orbit;
+        string? key = SatKey(Satellite, Transmitter);
+        string? other = SatKey(satellite, transmitter);
+        return key != null && key == other && Orbit == orbit;
       }
 
-      internal string Describe(string paramsText)
+      internal void NoteSource(SatnogsDbTransmitter? transmitter, SignalParams? signalParams)
       {
-        // terrestrial names no satellite, transmitter, uuid or orbit - the tuned frequency is all of it (§4.9)
+        if (transmitter != null)
+        {
+          if (Sources.Any(s => s.Tx?.uuid == transmitter.uuid)) return;
+        }
+        else if (Sources.Count > 0) return;
+
+        Sources.Add((transmitter, signalParams));
+        SignalParams ??= signalParams;
+        Transmitter ??= transmitter;
+        Satellite ??= transmitter?.Satellite;
+      }
+
+      internal string Describe(Func<SignalParams?, string> describeParams)
+      {
         string identity = Transmitter == null
           ? $"{DescribeTerrestrial(TerrestrialHz)}\n"
-          : $"Sat: {Transmitter.Satellite?.name ?? "Unknown"}\n" +
-            $"Tx: {Transmitter.description}\n" +
-            $"Norad: {Transmitter.Satellite?.norad_cat_id}\n" +
-            $"Uuid: {Transmitter.uuid}\n" +
-            $"Orbit: {Orbit}\n";
+          : $"Sat: {Satellite?.name ?? Transmitter.Satellite?.name ?? "Unknown"}\n" +
+            $"Norad: {Satellite?.norad_cat_id ?? Transmitter.Satellite?.norad_cat_id}\n" +
+            $"Orbit: {Orbit}\n" +
+            (double.IsNaN(MaxElevationDeg) ? "" : $"Max elevation: {MaxElevationDeg:F0}°\n");
+        string sources = Sources.Count == 0 ? describeParams(SignalParams)
+          : string.Join("\n\n", Sources.Select(s =>
+          {
+            string head = s.Tx == null ? "" : $"{s.Tx.description}\n";
+            return head + describeParams(s.Params);
+          }));
         return
           $"Start: {StartTime:yyyy-MM-dd HH:mm:ss}\n" +
           identity +
@@ -433,7 +473,7 @@ namespace SkyRoof
           $"Images: {ImageCount}\n" +
           (double.IsNaN(MaxSnrDb) ? "" : $"Max. SNR: {MaxSnrDb:F1} dB\n") +
           "\n" +
-          $"{paramsText}";
+          sources;
       }
     }
 
@@ -466,6 +506,7 @@ namespace SkyRoof
       ctx.MainForm.TelemetryMNU.Checked = true;
 
       SatnogsUploader = new SatnogsUploader(ctx);
+      BackgroundTelemetry = new BackgroundTelemetryMonitor(ctx, ForegroundSkip, BindBackgroundDecoder);
 
       // FM speech transcript click-to-play (§10.4): hand cursor over a clickable line, play its audio on click
       richTextBox1.MouseMove += richTextBox1_MouseMove;
@@ -495,6 +536,8 @@ namespace SkyRoof
       ctx.TelemetryPanel = null;
       ctx.MainForm.TelemetryMNU.Checked = false;
       ctx.Settings.Telemetry.SplitterDistance = splitContainer1.SplitterDistance;
+
+      BackgroundTelemetry.Dispose();
 
       // stop and free the decode pipeline (joins its worker thread and releases native FFTW memory)
       Decoder?.Dispose();
@@ -572,6 +615,7 @@ namespace SkyRoof
       ResolveSignalParams();
       UpdateTxStatus();
       CreatDestroyPipeline();
+      BackgroundTelemetry.Sync();
     }
 
     private void ResolveSignalParams()
@@ -776,41 +820,12 @@ namespace SkyRoof
         // source and SSTV events to the transmitter that advertises SSTV. In the unpaired case both are the
         // selection and this is exactly the single snapshot of before.
         var snapshot = new DecodeSnapshot(Satellite, telemetrySource?.Transmitter ?? Transmitter,
-          telemetrySource?.Params ?? SignalParams!, ctx.SdrPasses.GetNextPass(Satellite)?.OrbitNumber ?? -1,
+          telemetrySource?.Params ?? SignalParams!, OrbitFor(Satellite),
           TerrestrialHz);
         var sstvSnapshot = SstvSnapshot(snapshot);
         CurrentDecode = snapshot;
         Decoder = new(snapshot.SignalParams, snapshot.Satellite?.norad_cat_id, telemetry, sstv, fmEngine, detectParams);
-        if (Decoder.Pipeline != null)
-        {
-          // the image assembler is fed from the frame handler, and is captured here rather than read off
-          // the Decoder field when a frame surfaces: by then the field may already hold the next
-          // transmitter's decoder, and this decoder's frames must never reach that one's assembler.
-          var images = Decoder.Images;
-          var voice = Decoder.Voice;
-          Decoder.Pipeline.FrameDecoded += frame => FrameDecodedHandler(frame, snapshot, images, voice);
-          Decoder.Pipeline.BurstDecoded += report => BurstDecodedHandler(report, snapshot);
-        }
-        if (Decoder.Images != null)
-        {
-          // the image-id → tree-node map lives in the subscription closure, the same way the SSTV one
-          // does, so an image finalized by a disposed decoder's flush can never collide with an id of the
-          // next decoder's images. Images ride the telemetry frames, so they carry the TELEMETRY
-          // snapshot's identity — there is no third snapshot here.
-          var imageNodes = new Dictionary<int, TreeNode>();
-          Decoder.Images.ImageUpdated += product => SsdvImageHandler(product, snapshot, imageNodes, false);
-          Decoder.Images.ImageCompleted += product => SsdvImageHandler(product, snapshot, imageNodes, true);
-        }
-        if (Decoder.Voice != null)
-        {
-          // one node per message, keyed the way the images are — but a voice message has no id of its own,
-          // so the key is the message's first sub-frame number, which is what the assembler segments on and
-          // is stable for the life of a message. The closure keeps a disposed decoder's flush out of the
-          // next decoder's nodes, exactly as above.
-          var voiceNodes = new Dictionary<int, TreeNode>();
-          Decoder.Voice.VoiceUpdated += product => VoiceMessageHandler(product, snapshot, voiceNodes, false);
-          Decoder.Voice.VoiceCompleted += product => VoiceMessageHandler(product, snapshot, voiceNodes, true);
-        }
+        BindTelemetryEvents(Decoder, snapshot);
         // the detection-only branch exists for the search alone: its bursts go to the session and nowhere
         // else — no frames, no tree entry, no status label, because nothing here was decoded.
         if (Decoder.Detector != null) Decoder.Detector.BurstDecoded += OfferToDiscovery;
@@ -833,6 +848,72 @@ namespace SkyRoof
         }
       }
     }
+
+    // the selected sat is already on the main slicer (including any co-channel sibling).
+    // terrestrial has no satellite identity; every in-band sat is background.
+    private (string? SatId, string? TransmitterUuid) ForegroundSkip()
+    {
+      if (Terrestrial) return default;
+      return (Satellite?.sat_id, (TelemetrySource?.Transmitter ?? Transmitter)?.uuid);
+    }
+
+    private void BindBackgroundDecoder(TelemetryDecocder decoder, SatnogsDbSatellite sat,
+      SatnogsDbTransmitter tx, SignalParams signalParams, int orbit)
+    {
+      int resolved = OrbitFor(sat);
+      if (resolved < 0) resolved = orbit;
+      var snapshot = new DecodeSnapshot(sat, tx, signalParams, resolved, background: true);
+      BindTelemetryEvents(decoder, snapshot);
+    }
+
+    private int OrbitFor(SatnogsDbSatellite? sat) => FindSatellitePass(sat)?.OrbitNumber ?? -1;
+
+    private SatellitePass? FindSatellitePass(SatnogsDbSatellite? sat, int? orbit = null)
+    {
+      if (sat == null || ctx.HamPasses == null || ctx.SdrPasses == null) return null;
+      var now = DateTime.UtcNow;
+      bool ham = ctx.Sdr == null || SatnogsDbTransmitter.IsHamFrequency(ctx.FrequencyControl.GetSdrRfCenter());
+      SatellitePasses engine = ham ? ctx.HamPasses : ctx.SdrPasses;
+      var passes = engine.GetPassesSnapshot();
+      if (orbit is int n && n >= 0)
+      {
+        var match = passes.LastOrDefault(p => p.Satellite.sat_id == sat.sat_id && p.OrbitNumber == n);
+        if (match != null) return match;
+      }
+      return passes.FirstOrDefault(p =>
+          p.Satellite.sat_id == sat.sat_id && p.StartTime <= now && p.EndTime >= now);
+    }
+
+    // telemetry / SSDV / voice handlers captured against this snapshot so a later transmitter
+    // change cannot misfile this decoder's output. SSTV and FM stay on CreatDestroyPipeline:
+    // they belong to the selected downlink only.
+    private void BindTelemetryEvents(TelemetryDecocder decoder, DecodeSnapshot snapshot)
+    {
+      if (decoder.Pipeline != null)
+      {
+        var images = decoder.Images;
+        var voice = decoder.Voice;
+        decoder.Pipeline.FrameDecoded += frame => FrameDecodedHandler(frame, snapshot, images, voice);
+        decoder.Pipeline.BurstDecoded += report => BurstDecodedHandler(report, snapshot);
+      }
+      if (decoder.Images != null)
+      {
+        var imageNodes = new Dictionary<int, TreeNode>();
+        decoder.Images.ImageUpdated += product => SsdvImageHandler(product, snapshot, imageNodes, false);
+        decoder.Images.ImageCompleted += product => SsdvImageHandler(product, snapshot, imageNodes, true);
+      }
+      if (decoder.Voice != null)
+      {
+        var voiceNodes = new Dictionary<int, TreeNode>();
+        decoder.Voice.VoiceUpdated += product => VoiceMessageHandler(product, snapshot, voiceNodes, false);
+        decoder.Voice.VoiceCompleted += product => VoiceMessageHandler(product, snapshot, voiceNodes, true);
+      }
+    }
+
+    internal void ProcessWidebandSamples(DataEventArgs<Complex32> e) => BackgroundTelemetry.ProcessWidebandIq(e);
+    internal void TickBackgroundDoppler() => BackgroundTelemetry.TickDoppler();
+    internal void SyncBackgroundTelemetry() => BackgroundTelemetry.Sync();
+    internal void StopBackgroundTelemetry() => BackgroundTelemetry.Clear();
 
     private bool IsDecodable()
     {
@@ -909,20 +990,22 @@ namespace SkyRoof
 
     private void BurstDecodedHandler(StreamingBurstReport report, DecodeSnapshot snapshot)
     {
-      // hand the burst to a running discovery search (§4.1). Offer returns immediately and drops the burst
-      // if the previous one is still under analysis, so this stays free on the decode thread.
-      OfferToDiscovery(report);
+      // Discover is a selected-transmitter tool; background bursts must not steal the session.
+      if (!snapshot.Background) OfferToDiscovery(report);
 
       BeginInvoke(() =>
         {
-          // create the pass entry on the first burst (grayed until a valid frame arrives), not on the first frame
-          var (passNode, txPassInfo) = EnsureCurrentPassNode(snapshot);
+          // background: a burst is not a decode. Do not open a sat trunk until a frame/image/voice
+          // actually lands. If that pass node already exists, still tally SNR/bursts on it.
+          var existing = snapshot.Background ? FindPassNode(snapshot) : null;
+          if (snapshot.Background && existing == null) return;
+
+          var (passNode, txPassInfo) = existing ?? EnsureCurrentPassNode(snapshot);
           txPassInfo.BurstCount++;
-          UpdateStatusLabel("DECODING...", Color.Green);
+          if (!snapshot.Background) UpdateStatusLabel("DECODING...", Color.Green);
           if (double.IsNaN(txPassInfo.MaxSnrDb) || report.Burst.SnrDb > txPassInfo.MaxSnrDb)
             txPassInfo.MaxSnrDb = report.Burst.SnrDb;
-          // refresh the right panel if this pass entry is the one currently selected
-          if (treeView1.SelectedNode == passNode) richTextBox1.Text = txPassInfo.Describe(DescribeSignalParamsOrUnknown(txPassInfo.SignalParams));
+          if (treeView1.SelectedNode == passNode) richTextBox1.Text = DescribePassSummary(txPassInfo);
         }
        );
     }
@@ -933,7 +1016,9 @@ namespace SkyRoof
       ctx.KissServer.SendToAll(frame);
       // held frames are dropped, not queued: uploading starts at the Save click and runs forward from there
       // (§4.6). Parameters that were never edited are never held — the plain database path is untouched.
-      if (!UploadHeld && snapshot.Satellite?.norad_cat_id is int norad) SatnogsUploader?.Submit(frame, norad);
+      // The hold is for the selected transmitter's override dialog; background sats keep uploading.
+      if ((snapshot.Background || !UploadHeld) && snapshot.Satellite?.norad_cat_id is int norad)
+        SatnogsUploader?.Submit(frame, norad);
       // Images ride the telemetry frames, so every frame is offered unconditionally and the assembler's
       // own source parser drops the ones that are not image fragments — on HADES-SA, where the SSDV
       // packets are interleaved with telemetry on one downlink, that is most of them. Re-transcoding the
@@ -1419,7 +1504,9 @@ namespace SkyRoof
       }
 
       var (addr, addrLen) = ExtractAddress(frame, snapshot);
-      string nodeText = $"{DateTime.Now:HH:mm:ss}  {frame.Length} bytes  {addr}";
+      string label = addr.Length > 0 ? addr
+        : (txPassInfo.Sources.Count > 1 ? snapshot.Transmitter?.description ?? "" : "");
+      string nodeText = $"{DateTime.Now:HH:mm:ss}  {frame.Length} bytes  {label}".TrimEnd();
       var frameNode = new TreeNode(nodeText);
       string frameText = BuildFrameText(frame, snapshot, addr, addrLen);
       frameNode.Tag = frameText;
@@ -1437,36 +1524,49 @@ namespace SkyRoof
       }
 
       AddLeaf(passNode, frameNode);
-      if (treeView1.SelectedNode == passNode) richTextBox1.Text = txPassInfo.Describe(DescribeSignalParamsOrUnknown(txPassInfo.SignalParams));
+      if (treeView1.SelectedNode == passNode) richTextBox1.Text = DescribePassSummary(txPassInfo);
+    }
+
+    private (TreeNode Node, TxPassInfo Info)? FindPassNode(DecodeSnapshot snapshot)
+    {
+      int orbit = snapshot.Orbit;
+      for (int i = treeView1.Nodes.Count - 1; i >= 0; i--)
+      {
+        var node = treeView1.Nodes[i];
+        if (node.Tag is TxPassInfo info
+          && info.IsSamePass(snapshot.Satellite, snapshot.Transmitter, orbit, snapshot.TerrestrialHz))
+          return (node, info);
+      }
+      return null;
     }
 
     /// <summary>Returns the pass node this snapshot's content belongs to, and its info, creating the node
-    /// when this is the first burst or frame of a new transmitter+orbit pass. New telemetry/SSTV pass nodes
+    /// when this is the first burst or frame of a new satellite+orbit pass. New telemetry/SSTV pass nodes
     /// are grayed until their first valid frame/image; the FM speech path passes
     /// <paramref name="grayUntilContent"/> false because its node is only ever created once there is decoded
-    /// content (§10.3, operator: never grayed). Callers must add their leaf under the node returned here
-    /// rather than under the most recently touched one: with a co-channel pair they are not the same.</summary>
+    /// content (§10.3, operator: never grayed). All transmitters of the same satellite in the same orbit
+    /// share one trunk so interleaved background decodes do not alternate new roots.</summary>
     private (TreeNode Node, TxPassInfo Info) EnsureCurrentPassNode(DecodeSnapshot snapshot, bool grayUntilContent = true)
     {
-      int orbit = snapshot.Orbit;
-
-      // A co-channel pair interleaves telemetry frames and SSTV images from TWO transmitters, so the match
-      // runs over the last AND second-last top-level nodes instead of the current one alone — otherwise
-      // every alternation between them spawns a node. Two is exactly enough for a pair, and an A -> B -> A
-      // selection change still starts a fresh node the way it does today.
-      int count = treeView1.Nodes.Count;
-      for (int i = count - 1; i >= Math.Max(0, count - 2); i--)
+      if (FindPassNode(snapshot) is { } existing)
       {
-        var node = treeView1.Nodes[i];
-        if (node.Tag is TxPassInfo info && info.IsSame(snapshot.Transmitter, orbit, snapshot.TerrestrialHz)) return (node, info);
+        existing.Info.NoteSource(snapshot.Transmitter, snapshot.SignalParams);
+        return existing;
       }
 
+      int orbit = snapshot.Orbit;
+      var sat = snapshot.Satellite ?? snapshot.Transmitter?.Satellite;
+      var pass = snapshot.Transmitter == null ? null : FindSatellitePass(sat, orbit);
+      double maxEl = pass?.MaxElevation ?? double.NaN;
+
       string title = snapshot.Transmitter == null ? DescribeTerrestrial(snapshot.TerrestrialHz)
-        : $"{snapshot.Transmitter.Satellite.name}  {snapshot.Transmitter.description}";
+        : sat?.name ?? snapshot.Transmitter.Satellite.name;
+      if (snapshot.Transmitter != null && orbit > 0) title += $"  #{orbit}";
+      if (!double.IsNaN(maxEl)) title += $"  {maxEl:F0}°";
       var passNode = new TreeNode($"{DateTime.Now:yyyy-MM-dd HH:mm} {title}");
       if (grayUntilContent) passNode.ForeColor = SystemColors.GrayText;
-      var txPassInfo = new TxPassInfo(snapshot.Transmitter, orbit, snapshot.TerrestrialHz);
-      txPassInfo.SignalParams = snapshot.SignalParams;
+      var txPassInfo = new TxPassInfo(snapshot.Satellite, snapshot.Transmitter, orbit, snapshot.TerrestrialHz,
+        snapshot.SignalParams, maxEl);
       passNode.Tag = txPassInfo;
       treeView1.Nodes.Add(passNode);
       TrackNewNode(passNode);
@@ -1474,12 +1574,18 @@ namespace SkyRoof
       return (passNode, txPassInfo);
     }
 
+    private string DescribePassSummary(TxPassInfo info) => info.Describe(p => DescribeSignalParamsOrUnknown(p));
+
     /// <summary>Selects the newly added node (pass or leaf) if the tree selection was tracking the previously
-    /// current node, or nothing was selected at all; otherwise leaves the user's selection alone. WinForms
-    /// scrolls a newly selected node into view automatically.</summary>
+    /// current node on the <b>same</b> satellite trunk, or nothing was selected at all. A burst from another
+    /// sat must not steal the selection — that is what made the tree look like it was spawning alternating
+    /// roots every decode.</summary>
     private void TrackNewNode(TreeNode newNode)
     {
-      bool mustSelect = treeView1.SelectedNode == null || treeView1.SelectedNode == Current;
+      static TreeNode Trunk(TreeNode node) => node.Level == 0 ? node : node.Parent!;
+
+      bool mustSelect = treeView1.SelectedNode == null
+        || (treeView1.SelectedNode == Current && Trunk(treeView1.SelectedNode) == Trunk(newNode));
       Current = newNode;
       if (mustSelect) treeView1.SelectedNode = newNode;
     }
@@ -1666,7 +1772,7 @@ namespace SkyRoof
       if (!evt.Final) UpdateStatusLabel("DECODING...", Color.Green);
 
       if (treeView1.SelectedNode == node) DisplayImageInfo(info);
-      else if (treeView1.SelectedNode == passNode) richTextBox1.Text = txPassInfo.Describe(DescribeSignalParamsOrUnknown(txPassInfo.SignalParams));
+      else if (treeView1.SelectedNode == passNode) richTextBox1.Text = DescribePassSummary(txPassInfo);
 
       // last, so the tree and the picture are fully drawn before the modal report dialog can appear
       CheckSendAmsatReport(snapshot, evt);
@@ -1962,7 +2068,7 @@ namespace SkyRoof
       if (!final) UpdateStatusLabel("DECODING...", Color.Green);
 
       if (treeView1.SelectedNode == node) DisplayImageInfo(info);
-      else if (treeView1.SelectedNode == passNode) richTextBox1.Text = txPassInfo.Describe(DescribeSignalParamsOrUnknown(txPassInfo.SignalParams));
+      else if (treeView1.SelectedNode == passNode) richTextBox1.Text = DescribePassSummary(txPassInfo);
     }
 
     // Re-render the node's currently displayed reconstruction — this pass's, or the combined one — and
@@ -2146,7 +2252,7 @@ namespace SkyRoof
       if (!final) UpdateStatusLabel("DECODING...", Color.Green);
 
       if (treeView1.SelectedNode == node) DisplayVoiceInfo(info);
-      else if (treeView1.SelectedNode == passNode) richTextBox1.Text = txPassInfo.Describe(DescribeSignalParamsOrUnknown(txPassInfo.SignalParams));
+      else if (treeView1.SelectedNode == passNode) richTextBox1.Text = DescribePassSummary(txPassInfo);
     }
 
     // a voice node has no picture, so the right pane goes back to plain text rather than to the image
@@ -2656,6 +2762,7 @@ namespace SkyRoof
         ParamsDialog?.ShowConfirmingFrames(ConfirmingFrames, ConfirmFrames);
       }
       CreatDestroyPipeline();
+      BackgroundTelemetry.Sync();
 
       // §4: no parameter editing, no Discover and no Save-to-override for a transmitter the user did not
       // select, so the gear disappears while a sibling drives telemetry. To correct a wrong rank pick the
@@ -2777,7 +2884,7 @@ namespace SkyRoof
       if (node.Level == 0)
       {
         var info = node.Tag as TxPassInfo;
-        richTextBox1.Text = info!.Describe(DescribeSignalParamsOrUnknown(info.SignalParams));
+        richTextBox1.Text = DescribePassSummary(info!);
       }
       else
         richTextBox1.Text = (string)node!.Tag!;

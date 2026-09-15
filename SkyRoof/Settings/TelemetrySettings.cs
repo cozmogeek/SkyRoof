@@ -4,6 +4,11 @@ namespace SkyRoof
 {
   public class TelemetrySettings
   {
+    [DisplayName("Background Decode")]
+    [Description("Decode telemetry from other satellites that are currently in the SDR passband, not only the selected one. Each in-band downlink gets its own Doppler-tracked channel; frames appear under that satellite in the Telemetry panel. The selected satellite is unchanged. Uses extra CPU.")]
+    [DefaultValue(true)]
+    public bool BackgroundDecode { get; set; } = true;
+
     [DisplayName("Save to File")]
     [Description("Save decoded frames to a file")]
     [DefaultValue(false)]

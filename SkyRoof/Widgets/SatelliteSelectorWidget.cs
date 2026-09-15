@@ -107,7 +107,7 @@ namespace SkyRoof
       ctx.Settings.Satellites.SatelliteCustomizations.GetOrCreate(tx.Satellite.sat_id)
         .SelectedTransmitterId = tx.uuid;
 
-      if (tx.Satellite != SelectedSatellite) 
+      if (tx.Satellite.sat_id != SelectedSatellite?.sat_id)
         SetSelectedSatellite(tx.Satellite);
       ShowSelectedTransmitter();
     }
@@ -170,7 +170,7 @@ namespace SkyRoof
 
       LoadTransmitters();
 
-      SetSelectedPass(ctx.HamPasses.GetNextPass(SelectedSatellite));
+      SetSelectedPass(ctx.HamPasses.GetCurrentOrNextPass(SelectedSatellite));
     }
 
     private void ShowSelectedTransmitter()
@@ -306,7 +306,7 @@ namespace SkyRoof
     {
       if (a == null && b == null) return true;
       if (a == null || b == null) return false;
-      return a.Satellite == b.Satellite && a.StartTime == b.StartTime && a.EndTime == b.EndTime;
+      return a.Satellite.sat_id == b.Satellite.sat_id && a.OrbitNumber == b.OrbitNumber;
     }
   }
 }

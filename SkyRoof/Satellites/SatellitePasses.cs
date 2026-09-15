@@ -260,5 +260,20 @@ namespace SkyRoof
       var now = DateTime.UtcNow;
       return ComputePassesFor(satellite, now, now.AddDays(1)).OrderBy(pass => pass.StartTime).FirstOrDefault();
     }
+
+    /// <summary>
+    /// The pass currently in progress for <paramref name="satellite"/>, else the next one.
+    /// <see cref="GetNextPass"/> starts its search at *now*, so mid-pass it can roll to the following
+    /// orbit (AOS at 0° elevation) and make the rotator look like it is homing.
+    /// </summary>
+    internal SatellitePass? GetCurrentOrNextPass(SatnogsDbSatellite? satellite)
+    {
+      if (satellite == null) return null;
+
+      var now = DateTime.UtcNow;
+      return GetPassesSnapshot().FirstOrDefault(p =>
+          p.Satellite.sat_id == satellite.sat_id && p.StartTime <= now && p.EndTime > now)
+        ?? GetNextPass(satellite);
+    }
   }
 }

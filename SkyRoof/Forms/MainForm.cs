@@ -259,6 +259,7 @@ namespace SkyRoof
 
     private void StopSdr()
     {
+      ctx.TelemetryPanel?.StopBackgroundTelemetry();
       ctx.Sdr?.Dispose();
       ctx.Sdr = null;
       UpdateSdrLabel();
@@ -279,6 +280,7 @@ namespace SkyRoof
     private void Sdr_DataAvailable(object? sender, DataEventArgs<Complex32> e)
     {
       WidebandSpectrumAnalyzer?.StartProcessing(e);
+      ctx.TelemetryPanel?.ProcessWidebandSamples(e);
       ctx.Slicer?.StartProcessing(e);
       ctx.AutoRecorder?.AddIqSamples(e.Data, e.Count, wideband: true);
     }
@@ -303,6 +305,8 @@ namespace SkyRoof
       ctx.Slicer.IqDataAvailable += Slicer_IqDataAvailable;
       ctx.Slicer.Squelch.Enabled = ctx.Settings.Audio.Squelch;
       ctx.Slicer.ApplyModeVolumes(ctx.Settings.Audio.ModeVolume);
+      ctx.TelemetryPanel?.StopBackgroundTelemetry();
+      ctx.TelemetryPanel?.SyncBackgroundTelemetry();
     }
 
     private void Slicer_IqDataAvailable(object? sender, DataEventArgs<Complex32> e)
@@ -1178,6 +1182,7 @@ namespace SkyRoof
       ctx.SkyViewPanel?.Advance();
       ctx.WaterfallPanel?.ScaleControl?.Invalidate();
       FrequencyWidget.ClockTick();
+      ctx.TelemetryPanel?.TickBackgroundDoppler();
     }
 
     private void OneSecondTick()
@@ -1545,8 +1550,9 @@ namespace SkyRoof
         var selectedSat = ctx.SatelliteSelector.SelectedSatellite;
         var selectedPass = ctx.SatelliteSelector.SelectedPass;
         bool satChanged = selectedSat?.sat_id != chosenEntry.SatelliteId;
-        bool passChanged = selectedPass == null || selectedPass.Satellite != chosenPass.Satellite
-          || selectedPass.StartTime != chosenPass.StartTime;
+        bool passChanged = selectedPass == null
+          || selectedPass.Satellite.sat_id != chosenPass.Satellite.sat_id
+          || selectedPass.OrbitNumber != chosenPass.OrbitNumber;
         if (satChanged)
           ctx.MonitoredSatellites.ApplyEntryToSelector(ctx, chosenEntry);
         else

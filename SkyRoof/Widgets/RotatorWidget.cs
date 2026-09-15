@@ -58,14 +58,14 @@ namespace SkyRoof
 
     public void SetSatellite(SatnogsDbSatellite? sat)
     {
-      if (sat == Path?.Satellite) return;
+      if (sat?.sat_id == Path?.Satellite?.sat_id) return;
 
       engine?.StopRotation();
 
       if (sat == null)
         Path = null;
       else
-        SetPass(ctx.HamPasses.GetNextPass(sat));
+        SetPass(ctx.HamPasses.GetCurrentOrNextPass(sat));
     }
 
     public void SetPass(SatellitePass? pass)
@@ -76,16 +76,27 @@ namespace SkyRoof
         && pass.Satellite.sat_id == Path.Pass.Satellite.sat_id
         && pass.OrbitNumber == Path.Pass.OrbitNumber) return;
 
-      Path = pass == null ? null : Path = new(pass, ctx.Settings.Rotator, AntBearing);
+      // mid-pass GetNextPass can roll to the *next* orbit (AOS still in the future, elevation ~0).
+      // swapping onto that pass unchecks Track and sends the antenna to 0° el — looks like a home.
+      if (pass != null && Path?.Pass != null
+        && pass.Satellite.sat_id == Path.Pass.Satellite.sat_id
+        && DateTime.UtcNow < Path.Pass.EndTime
+        && pass.StartTime > DateTime.UtcNow)
+        return;
 
-       ResetUi();
-       Advance();
-       // show black LED if no satellite
-       ctx.MainForm.ShowRotatorStatus();
-       UpdatePathOptimizerForm();
-       toolTip1.SetToolTip(TrackCheckbox, $"Track {pass?.Satellite?.name} orbit {pass?.OrbitNumber}");
-  
-      }
+      bool keepTracking = TrackCheckbox.Checked
+        && pass != null
+        && Path?.Satellite?.sat_id == pass.Satellite.sat_id;
+
+      Path = pass == null ? null : new(pass, ctx.Settings.Rotator, AntBearing);
+
+      ResetUi(preserveTracking: keepTracking);
+      Advance();
+      // show black LED if no satellite
+      ctx.MainForm.ShowRotatorStatus();
+      UpdatePathOptimizerForm();
+      toolTip1.SetToolTip(TrackCheckbox, $"Track {pass?.Satellite?.name} orbit {pass?.OrbitNumber}");
+    }
 
     public void Park()
     {
@@ -148,6 +159,13 @@ namespace SkyRoof
     {
       if (engine == null || pass == null) return;
 
+      // already on this pass with tracking on: do not rebuild from AntBearing. a park/read of 0,0
+      // would re-optimize a path that starts at the origin and the next P command homes.
+      if (TrackCheckbox.Checked && Path?.Pass != null
+        && pass.Satellite.sat_id == Path.Pass.Satellite.sat_id
+        && pass.OrbitNumber == Path.Pass.OrbitNumber)
+        return;
+
       Path = new(pass, ctx.Settings.Rotator, AntBearing);
       TrackCheckbox.Enabled = true;
 
@@ -207,7 +225,7 @@ namespace SkyRoof
           // pass is over, so pre-positioning for the next pass between passes still works
           var pass = Path.Pass != null && DateTime.UtcNow < Path.Pass.EndTime
             ? Path.Pass
-            : ctx.HamPasses.GetNextPass(Path!.Satellite);
+            : ctx.HamPasses.GetCurrentOrNextPass(Path!.Satellite);
           var sett = ctx.Settings.Rotator;
           Path = new(pass, sett, AntBearing);
           UpdatePathOptimizerForm();
@@ -341,7 +359,7 @@ namespace SkyRoof
     private static bool IsSamePass(SatellitePass? a, SatellitePass? b)
     {
       if (a == null || b == null) return false;
-      return a.Satellite == b.Satellite && a.StartTime == b.StartTime && a.EndTime == b.EndTime;
+      return a.Satellite.sat_id == b.Satellite.sat_id && a.OrbitNumber == b.OrbitNumber;
     }
   }
 }
