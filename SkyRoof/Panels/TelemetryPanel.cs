@@ -1044,23 +1044,24 @@ namespace SkyRoof
     // they belong to the selected downlink only.
     private void BindTelemetryEvents(TelemetryDecocder decoder, DecodeSnapshot snapshot)
     {
+      var pushed = new PushOutcome();
       if (decoder.Pipeline != null)
       {
         var images = decoder.Images;
         var voice = decoder.Voice;
-        decoder.Pipeline.FrameDecoded += frame => FrameDecodedHandler(frame, snapshot, images, voice);
+        decoder.Pipeline.FrameDecoded += frame => FrameDecodedHandler(frame, snapshot, images, voice, pushed);
         decoder.Pipeline.BurstDecoded += report => BurstDecodedHandler(report, snapshot);
       }
       if (decoder.Images != null)
       {
         var imageNodes = new Dictionary<int, TreeNode>();
-        decoder.Images.ImageUpdated += product => SsdvImageHandler(product, snapshot, imageNodes, false);
+        decoder.Images.ImageUpdated += product => { pushed.Accepted = true; SsdvImageHandler(product, snapshot, imageNodes, false); };
         decoder.Images.ImageCompleted += product => SsdvImageHandler(product, snapshot, imageNodes, true);
       }
       if (decoder.Voice != null)
       {
         var voiceNodes = new Dictionary<int, TreeNode>();
-        decoder.Voice.VoiceUpdated += product => VoiceMessageHandler(product, snapshot, voiceNodes, false);
+        decoder.Voice.VoiceUpdated += product => { pushed.Accepted = true; VoiceMessageHandler(product, snapshot, voiceNodes, false); };
         decoder.Voice.VoiceCompleted += product => VoiceMessageHandler(product, snapshot, voiceNodes, true);
       }
     }
@@ -1171,7 +1172,9 @@ namespace SkyRoof
       ctx.KissServer.SendToAll(frame);
       // held frames are dropped, not queued: uploading starts at the Save click and runs forward from there
       // (§4.6). Parameters that were never edited are never held — the plain database path is untouched.
-      if (!UploadHeld && snapshot.Satellite?.norad_cat_id is int norad) SatnogsUploader?.Submit(frame, norad);
+      // The hold is for the selected transmitter's override dialog; background sats keep uploading.
+      if ((snapshot.Background || !UploadHeld) && snapshot.Satellite?.norad_cat_id is int norad)
+        SatnogsUploader?.Submit(frame, norad);
       // Which tree node the frame's leaf will go under, asked BEFORE the Push that may answer it: these are
       // the assemblers' own structural gates, and they are true for a fragment the Push then throws away —
       // a failed checksum, a duplicate, an offset that cannot be placed. Those are exactly the frames a
@@ -1706,7 +1709,7 @@ namespace SkyRoof
         : routing.ToVoice ? txPassInfo.LastVoiceNode : null;
       if (parent != null) AddFragment(parent, frameNode);
       else AddLeaf(passNode, frameNode);
-      if (treeView1.SelectedNode == passNode) richTextBox1.Text = txPassInfo.Describe(DescribeSignalParamsOrUnknown(txPassInfo.SignalParams));
+      if (treeView1.SelectedNode == passNode) richTextBox1.Text = DescribePassSummary(txPassInfo);
     }
 
     /// <summary>The suffix that says what became of an image or voice fragment, empty for an ordinary frame.
@@ -1729,6 +1732,19 @@ namespace SkyRoof
       { ToVoice: true, Accepted: false } => "  duplicate",
       _ => ""
     };
+
+    private (TreeNode Node, TxPassInfo Info)? FindPassNode(DecodeSnapshot snapshot)
+    {
+      int orbit = snapshot.Orbit;
+      for (int i = treeView1.Nodes.Count - 1; i >= 0; i--)
+      {
+        var node = treeView1.Nodes[i];
+        if (node.Tag is TxPassInfo info
+          && info.IsSamePass(snapshot.Satellite, snapshot.Transmitter, orbit, snapshot.TerrestrialHz))
+          return (node, info);
+      }
+      return null;
+    }
 
     /// <summary>Returns the pass node this snapshot's content belongs to, and its info, creating the node
     /// when this is the first burst or frame of a new satellite+orbit pass. New telemetry/SSTV pass nodes
