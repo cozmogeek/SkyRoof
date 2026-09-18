@@ -89,6 +89,7 @@ namespace SkyRoof
 
       StartSdrIfEnabled();
       UpdateAutoMonitorBannerVisibility();
+      ShowBackgroundTelemetryStatus();
 
       VersionChecker = new VersionChecker(ctx.Settings.LatestVersion);
       VersionChecker.UpdateAvailable += UpdateAvailable_handler;
@@ -153,6 +154,41 @@ namespace SkyRoof
     private void AutoMonitorLabel_Click(object sender, EventArgs e)
     {
       SetAutoMonitorEnabled(!ctx.Settings.Satellites.AutoMonitorEnabled);
+    }
+
+    public void ShowBackgroundTelemetryStatus()
+    {
+      if (BgDecodeLedLabel == null || BgDecodeStatusLabel == null) return;
+
+      bool enabled = ctx.Settings.Telemetry.BackgroundDecode;
+      BgDecodeLedLabel.ForeColor = enabled ? Color.Lime : Color.Red;
+      string tip = enabled
+        ? "Background telemetry decode enabled — click to disable"
+        : "Background telemetry decode disabled — click to enable";
+      BgDecodeLedLabel.ToolTipText = BgDecodeStatusLabel.ToolTipText = tip;
+      UpdateDecoderCount();
+    }
+
+    private void BgDecodeLabel_Click(object sender, EventArgs e)
+    {
+      bool enabled = !ctx.Settings.Telemetry.BackgroundDecode;
+      ctx.Settings.Telemetry.BackgroundDecode = enabled;
+      if (enabled) ctx.TelemetryPanel?.SyncBackgroundTelemetry();
+      else ctx.TelemetryPanel?.StopBackgroundTelemetry();
+      ShowBackgroundTelemetryStatus();
+    }
+
+    private void UpdateDecoderCount()
+    {
+      if (DecoderCountLabel == null) return;
+
+      bool enabled = ctx.Settings.Telemetry.BackgroundDecode;
+      DecoderCountLabel.Visible = enabled;
+      if (!enabled) return;
+
+      int n = ctx.TelemetryPanel?.RunningDecoderCount ?? 0;
+      DecoderCountLabel.Text = $"    Decoders: {n}";
+      DecoderCountLabel.ToolTipText = "Telemetry decoders running (selected satellite plus in-band background channels)";
     }
 
     private void UpdateAvailable_handler(object? sender, EventArgs e)
@@ -960,6 +996,7 @@ namespace SkyRoof
       StartSeconds = usedSeconds;
 
       CpuLoadlabel.Text = $"    CPU Load: {usage:00.0}%";
+      UpdateDecoderCount();
     }
 
     private void SdrStatus_Click(object sender, EventArgs e)

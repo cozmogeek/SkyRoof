@@ -320,6 +320,8 @@ namespace SkyRoof
     {
       if (ctx.Sdr?.Enabled != true) return;
 
+      if (ParkSdrOnUhfAfterVhfPass()) return;
+
       double bandwidth = ctx.Sdr.Info.MaxBandwidth;
       double low = ctx.Sdr.Frequency - bandwidth / 2;
       double high = ctx.Sdr.Frequency + bandwidth / 2;
@@ -345,6 +347,64 @@ namespace SkyRoof
           double rate = RadioLink.IsTerrestrial ? 0 : RadioLink.DownlinkDopplerRate;
           ctx.Slicer.SetOffset(targetFrequency - ctx.Sdr.Frequency, rate);
         }
+    }
+
+    /// <summary>
+    /// After a VHF pass the selected transmitter is still 2 m, so the 4 Hz Doppler tick would keep
+    /// the SDR parked there until the next AOS. Between passes sit on UHF (where most amateur sats
+    /// live) so the waterfall and background decode are not deaf. Returns true when the VHF
+    /// downlink must not be applied to the slicer.
+    /// </summary>
+    private bool ParkSdrOnUhfAfterVhfPass()
+    {
+      if (RadioLink.IsTerrestrial || RadioLink.IsAboveHorizon) return false;
+      if (!SatnogsDbTransmitter.IsVhfFrequency(RadioLink.DownlinkFrequency)) return false;
+
+      if (SdrIsOnVhf()) TuneSdrToUhfIdle();
+      return true;
+    }
+
+    private bool SdrIsOnVhf()
+    {
+      if (ctx.Sdr?.Info == null) return false;
+
+      var xverter = ctx.Settings.Transverter;
+      if (xverter.SdrOffsetEnabled)
+      {
+        var band = xverter.GetSdrBand(SdrConst.VHF_CENTER_FREQUENCY);
+        if (band == null) return false;
+        return SatnogsDbTransmitter.IsVhfFrequency(ctx.Sdr.Info.Frequency + band.LoOffset);
+      }
+
+      return SatnogsDbTransmitter.IsVhfFrequency(ctx.Sdr.Info.Frequency);
+    }
+
+    private void TuneSdrToUhfIdle()
+    {
+      var xverter = ctx.Settings.Transverter;
+      if (xverter.SdrOffsetEnabled)
+      {
+        var band = xverter.GetSdrBand(SdrConst.UHF_CENTER_FREQUENCY);
+        if (band == null) return;
+
+        double ifCenter = (band.RfLow + band.RfHigh) / 2.0 - band.LoOffset;
+        if (!ctx.Sdr!.IsFrequencySupported(ifCenter)) return;
+        if (Math.Abs(ctx.Sdr.Frequency - ifCenter) < 1)
+        {
+          XverterBand = band;
+          return;
+        }
+
+        ctx.Sdr.Frequency = ifCenter;
+        XverterBand = band;
+        ctx.WaterfallPanel?.SetCenterFrequency(SdrConst.UHF_CENTER_FREQUENCY);
+        ctx.WaterfallPanel?.ScaleControl?.BuildLabels();
+        return;
+      }
+
+      if (!BringToPassband(SdrConst.UHF_CENTER_FREQUENCY)) return;
+      ctx.WaterfallPanel?.SetCenterFrequency(ctx.Sdr!.Info.Frequency);
+      ctx.WaterfallPanel?.ScaleControl?.BuildLabels();
     }
 
     private bool BringToPassband(double frequency)
@@ -392,6 +452,8 @@ namespace SkyRoof
     private void XverterSetSlicerFrequency()
     {
       if (ctx.Sdr?.Enabled != true) return;
+
+      if (ParkSdrOnUhfAfterVhfPass()) return;
 
       double rfFrequency = RadioLink.CorrectedDownlinkFrequency!;
       var band = ctx.Settings.Transverter.GetSdrBand(rfFrequency);

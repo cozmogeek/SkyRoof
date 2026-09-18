@@ -234,7 +234,11 @@ namespace SkyRoof
         ctx.MainForm.ApplyKissServerSettings();
 
       if (ChangedFields.Contains("SkyRoof.TelemetrySettings.BackgroundDecode"))
-        ctx.TelemetryPanel?.SyncBackgroundTelemetry();
+      {
+        if (ctx.Settings.Telemetry.BackgroundDecode) ctx.TelemetryPanel?.SyncBackgroundTelemetry();
+        else ctx.TelemetryPanel?.StopBackgroundTelemetry();
+        ctx.MainForm.ShowBackgroundTelemetryStatus();
+      }
 
       if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.AudioSettings.") ||
                                     s.StartsWith("SkyRoof.ModeVolumeSettings.")))

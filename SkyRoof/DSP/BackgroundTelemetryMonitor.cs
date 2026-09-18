@@ -23,6 +23,11 @@ namespace SkyRoof
     private readonly Dictionary<string, Channel> channels = new();
     private bool disposed;
 
+    internal int ChannelCount
+    {
+      get { lock (gate) return channels.Count; }
+    }
+
     public BackgroundTelemetryMonitor(
       Context ctx,
       Func<(string? SatId, string? TransmitterUuid)> foreground,

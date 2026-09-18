@@ -1070,6 +1070,8 @@ namespace SkyRoof
     internal void TickBackgroundDoppler() => BackgroundTelemetry.TickDoppler();
     internal void SyncBackgroundTelemetry() => BackgroundTelemetry.Sync();
     internal void StopBackgroundTelemetry() => BackgroundTelemetry.Clear();
+    internal int BackgroundDecoderCount => BackgroundTelemetry.ChannelCount;
+    internal int RunningDecoderCount => (Decoder != null ? 1 : 0) + BackgroundDecoderCount;
 
     private bool IsDecodable()
     {

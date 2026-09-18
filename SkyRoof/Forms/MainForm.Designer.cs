@@ -114,8 +114,11 @@
       TrackRotatorMNU = new ToolStripMenuItem();
       AutoMonitorLedLabel = new ToolStripStatusLabel();
       AutoMonitorStatusLabel = new ToolStripStatusLabel();
+      BgDecodeLedLabel = new ToolStripStatusLabel();
+      BgDecodeStatusLabel = new ToolStripStatusLabel();
       NoiseFloorLabel = new ToolStripStatusLabel();
       CpuLoadlabel = new ToolStripStatusLabel();
+      DecoderCountLabel = new ToolStripStatusLabel();
       UpdateLabel = new ToolStripStatusLabel();
       toolTip1 = new VE3NEA.ToolTipEx(components);
       panel4 = new Panel();
@@ -598,7 +601,7 @@
       // StatusStrip
       // 
       StatusStrip.ImageScalingSize = new Size(24, 24);
-      StatusStrip.Items.AddRange(new ToolStripItem[] { toolStripStatusLabel2, SatDataLedLabel, SatDataStatusLabel, SdrLedLabel, SdrStatusLabel, SoundcardLedLabel, SoundcardStatusLabel, SoundcardDropdownBtn, VacLedLabel, VacStatusLabel, RxCatLedLabel, RxCatStatusLabel, TxCatLedLabel, TxCatStatusLabel, IqOutputLedLabel, IqOutputStatusLabel, RotatorLedLabel, RotatorStatusLabel, RotatorDropdownBtn, AutoMonitorLedLabel, AutoMonitorStatusLabel, NoiseFloorLabel, CpuLoadlabel, UpdateLabel });
+      StatusStrip.Items.AddRange(new ToolStripItem[] { toolStripStatusLabel2, SatDataLedLabel, SatDataStatusLabel, SdrLedLabel, SdrStatusLabel, SoundcardLedLabel, SoundcardStatusLabel, SoundcardDropdownBtn, VacLedLabel, VacStatusLabel, RxCatLedLabel, RxCatStatusLabel, TxCatLedLabel, TxCatStatusLabel, IqOutputLedLabel, IqOutputStatusLabel, RotatorLedLabel, RotatorStatusLabel, RotatorDropdownBtn, AutoMonitorLedLabel, AutoMonitorStatusLabel, BgDecodeLedLabel, BgDecodeStatusLabel, NoiseFloorLabel, CpuLoadlabel, DecoderCountLabel, UpdateLabel });
       StatusStrip.Location = new Point(0, 926);
       StatusStrip.Name = "StatusStrip";
       StatusStrip.ShowItemToolTips = true;
@@ -839,6 +842,28 @@
       AutoMonitorStatusLabel.MouseEnter += StatusLabel_MouseEnter;
       AutoMonitorStatusLabel.MouseLeave += StatusLabel_MouseLeave;
       // 
+      // BgDecodeLedLabel
+      // 
+      BgDecodeLedLabel.Font = new Font("Webdings", 9F);
+      BgDecodeLedLabel.ForeColor = Color.Gray;
+      BgDecodeLedLabel.Name = "BgDecodeLedLabel";
+      BgDecodeLedLabel.Size = new Size(21, 30);
+      BgDecodeLedLabel.Text = "n";
+      BgDecodeLedLabel.Click += BgDecodeLabel_Click;
+      BgDecodeLedLabel.MouseEnter += StatusLabel_MouseEnter;
+      BgDecodeLedLabel.MouseLeave += StatusLabel_MouseLeave;
+      // 
+      // BgDecodeStatusLabel
+      // 
+      BgDecodeStatusLabel.Font = new Font("Segoe UI", 10F);
+      BgDecodeStatusLabel.Name = "BgDecodeStatusLabel";
+      BgDecodeStatusLabel.Size = new Size(85, 30);
+      BgDecodeStatusLabel.Text = "BG Decode";
+      BgDecodeStatusLabel.TextAlign = ContentAlignment.MiddleLeft;
+      BgDecodeStatusLabel.Click += BgDecodeLabel_Click;
+      BgDecodeStatusLabel.MouseEnter += StatusLabel_MouseEnter;
+      BgDecodeStatusLabel.MouseLeave += StatusLabel_MouseLeave;
+      // 
       // NoiseFloorLabel
       // 
       NoiseFloorLabel.Name = "NoiseFloorLabel";
@@ -854,6 +879,15 @@
       CpuLoadlabel.Size = new Size(96, 30);
       CpuLoadlabel.Text = "CPU Load: 00.0%";
       CpuLoadlabel.TextAlign = ContentAlignment.MiddleLeft;
+      // 
+      // DecoderCountLabel
+      // 
+      DecoderCountLabel.DisplayStyle = ToolStripItemDisplayStyle.Text;
+      DecoderCountLabel.Name = "DecoderCountLabel";
+      DecoderCountLabel.Size = new Size(80, 30);
+      DecoderCountLabel.Text = "    Decoders: 0";
+      DecoderCountLabel.TextAlign = ContentAlignment.MiddleLeft;
+      DecoderCountLabel.Visible = false;
       // 
       // UpdateLabel
       // 
@@ -956,6 +990,7 @@
     private ToolStripStatusLabel IqOutputStatusLabel;
     private ToolStripStatusLabel NoiseFloorLabel;
     private ToolStripStatusLabel CpuLoadlabel;
+    private ToolStripStatusLabel DecoderCountLabel;
     private VE3NEA.ToolTipEx toolTip1;
     private ToolStripMenuItem DownloadTleMNU;
     public ToolStripMenuItem TransmittersMNU;
@@ -988,6 +1023,8 @@
     private ToolStripMenuItem TrackRotatorMNU;
     private ToolStripStatusLabel AutoMonitorLedLabel;
     private ToolStripStatusLabel AutoMonitorStatusLabel;
+    private ToolStripStatusLabel BgDecodeLedLabel;
+    private ToolStripStatusLabel BgDecodeStatusLabel;
     public ToolStripMenuItem Ft4ConsoleMNU;
     public ToolStripMenuItem RecorderMNU;
     public ToolStripMenuItem AutoSelectionMNU;
