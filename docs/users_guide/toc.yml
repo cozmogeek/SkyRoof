@@ -101,6 +101,8 @@ items:
       href: receive_voice.md
     - name: Receive FSK & AFSK Telemetry
       href: fsk_afsk_telemetry.md
+    - name: Control the Rotator with the S.A.T. or PstRotator
+      href: control_rotator_sat_pstrotator.md
   - name: Miscellaneous
     items:
     - name: Satellite Data
