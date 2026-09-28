@@ -8,7 +8,6 @@ namespace SkyRoof
   {
     private Context ctx;
     private QsoInfo qso;
-    private static Point LastLocation = Point.Empty;
 
     public LoqFt4QsoDialog(Context ctx, QsoInfo qso)
     {
@@ -16,7 +15,6 @@ namespace SkyRoof
 
       this.ctx = ctx;
       this.qso = qso;
-      SetRandomLocation();
     }
 
     internal static void PopUp(Context ctx, QsoInfo qso)
@@ -26,20 +24,26 @@ namespace SkyRoof
       dialog.Show(ctx.MainForm);
     }
 
-    private void SetRandomLocation()
+    protected override void OnLoad(EventArgs e)
     {
-      if (LastLocation == Point.Empty)
-        LastLocation = new(
-          (Screen.PrimaryScreen!.WorkingArea.Width - Size.Width) / 2,
-          (Screen.PrimaryScreen!.WorkingArea.Height - Size.Width) / 2
-          );
+      base.OnLoad(e);
+      CenterOnMainForm();
+    }
 
-      Random rand = new Random();
+    private void CenterOnMainForm()
+    {
+      var owner = ctx.MainForm;
+      Rectangle r = owner != null && owner.IsHandleCreated
+        ? owner.Bounds
+        : Screen.PrimaryScreen!.WorkingArea;
 
-      Location =  new(
-        LastLocation.X + rand.Next(-50, 50),
-        LastLocation.Y + rand.Next(-50, 50)
-        );
+      var wa = Screen.FromRectangle(r).WorkingArea;
+      var rand = new Random();
+      int x = r.Left + (r.Width - Width) / 2 + rand.Next(-50, 50);
+      int y = r.Top + (r.Height - Height) / 2 + rand.Next(-50, 50);
+      x = Math.Max(wa.Left, Math.Min(x, wa.Right - Width));
+      y = Math.Max(wa.Top, Math.Min(y, wa.Bottom - Height));
+      Location = new Point(x, y);
     }
 
     private void SaveBtn_Click(object sender, EventArgs e)
@@ -72,11 +76,6 @@ namespace SkyRoof
     private void CancelBtn_Click(object sender, EventArgs e)
     {
       Hide();
-    }
-
-    private void LoqFt4QsoDialog_Move(object sender, EventArgs e)
-    {
-      LastLocation = Location;
     }
   }
 }
