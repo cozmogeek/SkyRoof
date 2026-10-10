@@ -63,17 +63,17 @@ jobs:
         with: 
           path: 'install\Output\SkyRoofSetup.exe'
 
-      - name: Sign
-        uses: signpath/github-action-submit-signing-request@v1.1
-        with:
-          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
-          github-token: '${{ secrets.GITHUB_TOKEN }}'
-          organization-id: '3bf60771-cf88-4c93-81c6-6cc8896015c3'
-          project-slug: 'SkyRoof'
-          signing-policy-slug: 'release-signing'
-          github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
-          wait-for-completion: true
-          output-artifact-directory: install
+      # - name: Sign
+      #   uses: signpath/github-action-submit-signing-request@v1.1
+      #   with:
+      #     api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+      #     github-token: '${{ secrets.GITHUB_TOKEN }}'
+      #     organization-id: '3bf60771-cf88-4c93-81c6-6cc8896015c3'
+      #     project-slug: 'SkyRoof'
+      #     signing-policy-slug: 'release-signing'
+      #     github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
+      #     wait-for-completion: true
+      #     output-artifact-directory: install
 
       # the installer ships as a bare .exe on purpose. Zipping it hides the Authenticode
       # signature from Defender and SmartScreen at download time, and an executable inside
