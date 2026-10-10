@@ -84,7 +84,7 @@ jobs:
           $version = "${{ steps.get_version.outputs.version }}"
           $versionedName = "SkyRoofSetup-v.$version"
 
-          Copy-Item install\SkyRoofSetup.exe -Destination "install\$versionedName.exe"
+          Copy-Item install\Output\SkyRoofSetup.exe -Destination "install\$versionedName.exe"
           Get-ChildItem -Path install\*.* -recurse
         shell: pwsh
 
