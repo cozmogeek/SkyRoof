@@ -205,6 +205,7 @@ namespace SkyRoof
           double nominal = tx.DownlinkLow;
           var observation = engine.ObserveSatellite(pass.Satellite, now);
           double rf = observation == null ? nominal : nominal * (1 - observation.RangeRate / 3e5);
+          rf = ApplyManualDownlinkCorrection(pass.Satellite, rf);
           if (!TrySlicerOffset(rf, sdrHz, xverter, out _)) continue;
 
           result.Add(new Target(pass.Satellite, tx, parameters!, nominal, pass.OrbitNumber, elevation));
@@ -260,9 +261,18 @@ namespace SkyRoof
 
       double factor = observation.RangeRate / 3e5;
       channel.Doppler.Update(factor, true, channel.Satellite, now);
-      rfHz = channel.NominalHz * (1 - factor);
+      rfHz = ApplyManualDownlinkCorrection(channel.Satellite, channel.NominalHz * (1 - factor));
       rateHzPerSec = -channel.NominalHz * channel.Doppler.FactorRate;
       return true;
+    }
+
+    // same per-sat Hz offset the main RadioLink / waterfall labels use; RIT stays selected-sat only
+    private double ApplyManualDownlinkCorrection(SatnogsDbSatellite sat, double rfHz)
+    {
+      if (ctx.Settings.Satellites.SatelliteCustomizations.TryGetValue(sat.sat_id, out var cust)
+        && cust.DownlinkManualCorrectionEnabled)
+        rfHz += cust.DownlinkManualCorrection;
+      return rfHz;
     }
 
     private bool TrySlicerOffset(double rfHz, double sdrHz, bool xverter, out double offsetHz)
