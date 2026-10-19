@@ -161,6 +161,10 @@ namespace SkyRoof
         case "SkyRoof.RecordingSettings.BasebandIqMsps":
           ValidateDouble(e, 20, 0);
           break;
+
+        case "SkyRoof.TelemetrySettings.BackgroundDecoderLimit":
+          ValidateInt(e, TelemetrySettings.MaxBackgroundDecoderLimit, TelemetrySettings.MinBackgroundDecoderLimit);
+          break;
       }
 
       if (canChange) ChangedFields.Add(label);
@@ -233,7 +237,8 @@ namespace SkyRoof
       if (ChangedFields.Exists(s => s.StartsWith("SkyRoof.KissServerSettings.")))
         ctx.MainForm.ApplyKissServerSettings();
 
-      if (ChangedFields.Contains("SkyRoof.TelemetrySettings.BackgroundDecode"))
+      if (ChangedFields.Contains("SkyRoof.TelemetrySettings.BackgroundDecode") ||
+          ChangedFields.Contains("SkyRoof.TelemetrySettings.BackgroundDecoderLimit"))
       {
         if (ctx.Settings.Telemetry.BackgroundDecode) ctx.TelemetryPanel?.SyncBackgroundTelemetry();
         else ctx.TelemetryPanel?.StopBackgroundTelemetry();

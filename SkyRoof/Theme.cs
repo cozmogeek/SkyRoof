@@ -162,6 +162,12 @@ namespace SkyRoof
     // under the label, and the frame around the active span
     public static Color ScaleAccent => Pick(Color.Blue, Color.SkyBlue);
 
+    // a background telemetry channel is mixing this exact downlink (not every label of the sat)
+    public static Color ScaleBackgroundDecode => Pick(Color.Green, Color.LimeGreen);
+
+    // this downlink looks like telemetry but current DB/override params cannot build a decoder
+    public static Color ScaleUnsupportedTelemetry => Pick(Color.Firebrick, Color.OrangeRed);
+
     // the transponder span is a wash over the scale. A 20/255 tint that reads on #F0F0F0
     // disappears on #202020, so the dark alpha is doubled
     public static Color ScaleActiveSpan => Pick(Color.FromArgb(20, Color.Blue), Color.FromArgb(40, Color.Aqua));

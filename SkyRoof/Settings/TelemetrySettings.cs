@@ -16,10 +16,19 @@ namespace SkyRoof
 
   public class TelemetrySettings
   {
+    public const int DefaultBackgroundDecoderLimit = 8;
+    public const int MinBackgroundDecoderLimit = 1;
+    public const int MaxBackgroundDecoderLimit = 32;
+
     [DisplayName("Background Decode")]
     [Description("Decode telemetry from other satellites that are currently in the SDR passband, not only the selected one. Each in-band downlink gets its own Doppler-tracked channel; frames appear under that satellite in the Telemetry panel. The selected satellite is unchanged. Uses extra CPU.")]
     [DefaultValue(true)]
     public bool BackgroundDecode { get; set; } = true;
+
+    [DisplayName("Background Decoder Limit")]
+    [Description("Maximum number of extra in-band telemetry channels besides the selected satellite. The status-bar decoder count includes the selected satellite, so it can reach this limit plus one. Higher values use more CPU.")]
+    [DefaultValue(DefaultBackgroundDecoderLimit)]
+    public int BackgroundDecoderLimit { get; set; } = DefaultBackgroundDecoderLimit;
 
     [DisplayName("Save to File")]
     [Description("Save decoded frames to a file")]

@@ -1072,6 +1072,8 @@ namespace SkyRoof
     internal void StopBackgroundTelemetry() => BackgroundTelemetry.Clear();
     internal int BackgroundDecoderCount => BackgroundTelemetry.ChannelCount;
     internal int RunningDecoderCount => (Decoder != null ? 1 : 0) + BackgroundDecoderCount;
+    internal bool HasBackgroundDecoder(string satId, long frequencyHz) =>
+      BackgroundTelemetry.IsDecoding(satId, frequencyHz);
 
     private bool IsDecodable()
     {

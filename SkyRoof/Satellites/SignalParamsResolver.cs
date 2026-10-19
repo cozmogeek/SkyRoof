@@ -139,6 +139,34 @@ namespace SkyRoof.Satellites
       return SupportedModulations.Contains(signalParams.Modulation);
     }
 
+    /// <summary>
+    /// True when this downlink has a digital telemetry row whose resolved params cannot build a pipeline
+    /// (unknown baud/framing/modulation, or an unsupported format), and no co-channel sibling that can.
+    /// Analog CW/FM, SSTV-only, linear transponders and LRPT/HRPT are not settings gaps.
+    /// </summary>
+    public static bool FrequencyHasTelemetrySettingsGap(IEnumerable<SatnogsDbTransmitter> transmitters)
+    {
+      bool gap = false;
+      foreach (var tx in transmitters)
+      {
+        if (IsNonTelemetryDownlink(tx)) continue;
+        var p = Resolve(tx);
+        if (IsTelemetryDecodable(p)) return false;
+        if (HasSstv(tx)) continue;
+        if (p?.Modulation is Modulation.CW or Modulation.FM or Modulation.SSTV) continue;
+        gap = true;
+      }
+      return gap;
+    }
+
+    private static bool IsNonTelemetryDownlink(SatnogsDbTransmitter tx)
+    {
+      if (tx.type == "Transponder") return true;
+      if (tx.downlink_high.HasValue && tx.downlink_high != tx.downlink_low
+        && tx.uplink_low.HasValue && tx.uplink_high.HasValue) return true;
+      return AutoRecorder.NeedsWidebandIq(tx);
+    }
+
     /// <summary>True if the transmitter advertises SSTV anywhere in its mode/description strings. A mixed
     /// transmitter (e.g. UmKA-1 alternating FSK telemetry and SSTV in one pass) classifies as
     /// FSK in <see cref="ExtractyModulation"/>, so the SSTV capability is surfaced separately and the

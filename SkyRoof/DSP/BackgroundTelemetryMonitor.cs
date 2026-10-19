@@ -13,8 +13,7 @@ namespace SkyRoof
   /// </summary>
   internal sealed class BackgroundTelemetryMonitor : IDisposable
   {
-    // each channel is a full mix/decimate thread on the SDR rate; a handful is plenty for one passband
-    internal const int MaxChannels = 8;
+    // each channel is a full mix/decimate thread on the SDR rate; the cap is Telemetry settings
 
     private readonly Context ctx;
     private readonly Action<TelemetryDecocder, SatnogsDbSatellite, SatnogsDbTransmitter, SignalParams, int> bind;
@@ -26,6 +25,21 @@ namespace SkyRoof
     internal int ChannelCount
     {
       get { lock (gate) return channels.Count; }
+    }
+
+    /// <summary>
+    /// True when a background channel is mixing this satellite at this nominal downlink.
+    /// Other frequencies of the same sat stay unmatched — one bird can have several labels.
+    /// </summary>
+    internal bool IsDecoding(string satId, long frequencyHz)
+    {
+      lock (gate)
+      {
+        foreach (var channel in channels.Values)
+          if (channel.Satellite.sat_id == satId && channel.Transmitter.DownlinkLow == frequencyHz)
+            return true;
+      }
+      return false;
     }
 
     public BackgroundTelemetryMonitor(
@@ -216,8 +230,15 @@ namespace SkyRoof
         .OrderByDescending(t => t.Elevation)
         .ThenByDescending(t => t.Tx.alive)
         .ThenByDescending(t => t.Params.Baud)
-        .Take(MaxChannels)
+        .Take(BackgroundChannelLimit())
         .ToList();
+    }
+
+    private int BackgroundChannelLimit()
+    {
+      return Math.Clamp(ctx.Settings.Telemetry.BackgroundDecoderLimit,
+        TelemetrySettings.MinBackgroundDecoderLimit,
+        TelemetrySettings.MaxBackgroundDecoderLimit);
     }
 
     private SatellitePasses PassEngine()

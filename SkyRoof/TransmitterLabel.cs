@@ -1,4 +1,6 @@
-﻿namespace SkyRoof
+﻿using SkyRoof.Satellites;
+
+namespace SkyRoof
 {
   internal class TransmitterLabel
   {
@@ -6,6 +8,8 @@
     public List<SatnogsDbTransmitter> Transmitters;
     internal readonly SatnogsDbTransmitter? Transponder;
     public long Frequency;
+    // this downlink's telemetry row cannot be built from current DB/override params
+    internal readonly bool TelemSettingsUnsupported;
 
     public Size Size;
     public float x;
@@ -28,6 +32,7 @@
 
       Transponder = Transmitters.FirstOrDefault(t => t.downlink_high != null);
       Span = Transponder?.downlink_high - Transponder?.downlink_low;
+      TelemSettingsUnsupported = SignalParamsResolver.FrequencyHasTelemetrySettingsGap(Transmitters);
     }
   }
 }
