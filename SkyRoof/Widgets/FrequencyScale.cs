@@ -18,6 +18,7 @@ namespace SkyRoof
     private readonly Pen PassbandPen = new Pen(Theme.PassbandFrame);
     private readonly Brush AccentBrush = new SolidBrush(Theme.ScaleAccent);
     private readonly Brush BackgroundDecodeBrush = new SolidBrush(Theme.ScaleBackgroundDecode);
+    private readonly Brush HeardTelemetryBrush = new SolidBrush(Theme.ScaleHeardTelemetry);
     private readonly Brush UnsupportedTelemetryBrush = new SolidBrush(Theme.ScaleUnsupportedTelemetry);
     private readonly Pen AccentPen = new Pen(Theme.ScaleAccent);
     private Brush BgBrush;
@@ -285,11 +286,14 @@ namespace SkyRoof
       // sat name. The selected label sits on that fixed aqua chip, so its text is fixed too -
       // the accent is a blue in either theme and has too little contrast against the chip.
       // Green is a live background decoder on this downlink, not every label of the same sat.
+      // Yellow is a probe on an unsupported downlink that has heard the satellite transmitting.
       // Red is a telemetry row whose current params cannot build a decoder (override/settings gap).
       Brush brush = AccentBrush;
       if (selected) brush = Brushes.Black; // fixed: on the aqua chip
       else if (ctx.TelemetryPanel?.HasBackgroundDecoder(label.Pass.Satellite.sat_id, label.Frequency) == true)
         brush = BackgroundDecodeBrush;
+      else if (ctx.TelemetryPanel?.HasHeardUnsupportedActivity(label.Pass.Satellite.sat_id, label.Frequency) == true)
+        brush = HeardTelemetryBrush;
       else if (label.TelemSettingsUnsupported) brush = UnsupportedTelemetryBrush;
       else if (label.Pass.StartTime > now) brush = SystemBrushes.ControlText;
       else if (label.Pass.EndTime < now) brush = SystemBrushes.GrayText;

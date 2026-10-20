@@ -168,6 +168,9 @@ namespace SkyRoof
     // this downlink looks like telemetry but current DB/override params cannot build a decoder
     public static Color ScaleUnsupportedTelemetry => Pick(Color.Firebrick, Color.OrangeRed);
 
+    // a probe on an unsupported downlink has heard the satellite transmitting (bursts, not a decode)
+    public static Color ScaleHeardTelemetry => Pick(Color.DarkGoldenrod, Color.Gold);
+
     // the transponder span is a wash over the scale. A 20/255 tint that reads on #F0F0F0
     // disappears on #202020, so the dark alpha is doubled
     public static Color ScaleActiveSpan => Pick(Color.FromArgb(20, Color.Blue), Color.FromArgb(40, Color.Aqua));

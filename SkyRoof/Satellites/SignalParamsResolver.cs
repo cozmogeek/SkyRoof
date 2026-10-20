@@ -152,7 +152,7 @@ namespace SkyRoof.Satellites
         if (IsNonTelemetryDownlink(tx)) continue;
         var p = Resolve(tx);
         if (IsTelemetryDecodable(p)) return false;
-        if (HasSstv(tx)) continue;
+        if (HasSstv(tx) || HasCw(tx)) continue;
         if (p?.Modulation is Modulation.CW or Modulation.FM or Modulation.SSTV) continue;
         gap = true;
       }
@@ -176,6 +176,19 @@ namespace SkyRoof.Satellites
       if (tx == null) return false;
       string s = $"{tx.gr_sats?.modulation} {tx.description} {tx.mode} {tx.DownlinkMode}";
       return s.Contains("SSTV", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True if this SatNOGS transmitter is CW (beacon or CW telemetry). Uses the transmitter's own
+    /// mode_id / mode / description, not the satellite-level JE9PEL line — those often read
+    /// "GFSK CW" and would otherwise classify the CW row as incomplete GFSK.
+    /// </summary>
+    public static bool HasCw(SatnogsDbTransmitter? tx)
+    {
+      if (tx == null) return false;
+      if (tx.mode_id == 6) return true;
+      string s = $"{tx.description} {tx.mode} {tx.DownlinkMode}";
+      return s.Contains("CW", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>True if the transmitter advertises SSDV. Unlike every other mode string this is not a

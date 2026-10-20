@@ -106,9 +106,6 @@ namespace SkyRoof
       InitializeComponent();
       WireDots();
       SetupResetMenu();
-      // wired here rather than in the designer: the button keeps its DialogResult.Cancel (which closes the
-      // form), and this handler runs first to put the parameters back before it does
-      CancelBtn.Click += CancelBtn_Click;
     }
 
     public DialogResult Open(SignalParamsView view, Control? anchor = null)
@@ -129,6 +126,10 @@ namespace SkyRoof
       DifferentialCombo.DataSource = (string[])TriStateItems.Clone();
       TelemetryFormatCombo.DataSource = new List<string>(view.FormatIds);
 
+      // ComboBox.DataSource resets SelectedIndex to 0 (Unknown) when the handle/BindingContext is created
+      // at ShowDialog. Hold commits until OnShown has put the real values back, or opening the dialog
+      // applies Unknown to the live pipeline.
+      Suppressed = true;
       Quiet(() => PopulateControls(view));
       BuildBindings(view);
       // Save writes a parameter set down as the truth about this transmitter, so it stays disabled until the
@@ -155,6 +156,22 @@ namespace SkyRoof
       Location = new Point(x, y);
     }
 
+    // handle creation has already reset the data-bound combos to index 0; put the opening values back and
+    // only then treat combo changes as operator edits
+    protected override void OnShown(EventArgs e)
+    {
+      base.OnShown(e);
+      Quiet(() => RestoreControls(Original, ResultFormatId));
+      foreach (var b in Bindings)
+      {
+        b.Opened = b.Value();
+        b.Populated = b.Value();
+        b.Applied = b.Value();
+        RefreshDot(b);
+      }
+      Suppressed = false;
+    }
+
 
     //----------------------------------------------------------------------------------------------
     //                                         controls
@@ -172,8 +189,8 @@ namespace SkyRoof
     // of them run it under Quiet: none of it is an operator edit and none of it may be applied as one.
     private void RestoreControls(SignalParams p, string? formatId)
     {
-      ModulationCombo.SelectedItem = p.Modulation;
-      FramingCombo.SelectedItem = p.Framing;
+      SelectCombo(ModulationCombo, p.Modulation);
+      SelectCombo(FramingCombo, p.Framing);
       BaudTextBox.Text = FormatRate(p.ResolvedBaud ?? p.Baud);
       DeviationTextBox.Text = FormatRate(p.ResolvedDeviation ?? p.Deviation);
       AfCarrierTextBox.Text = FormatNullable(p.AfCarrier);
@@ -210,12 +227,12 @@ namespace SkyRoof
       Bind("Modulation", ModulationDot, view.ModulationDot, ModulationCombo,
         () => Equals(ModulationCombo.SelectedItem, dbMod),
         () => ModulationCombo.SelectedItem,
-        () => ModulationCombo.SelectedItem = dbMod);
+        () => SelectCombo(ModulationCombo, dbMod));
 
       Bind("Framing", FramingDot, view.FramingDot, FramingCombo,
         () => Equals(FramingCombo.SelectedItem, dbFraming),
         () => FramingCombo.SelectedItem,
-        () => FramingCombo.SelectedItem = dbFraming);
+        () => SelectCombo(FramingCombo, dbFraming));
 
       Bind("Baud", BaudDot, view.BaudDot, BaudTextBox,
         () => BaudTextBox.Text == dbBaud,
@@ -365,15 +382,6 @@ namespace SkyRoof
       RevertParams = CurrentParams();
       RevertFormatId = CurrentFormatId();
       Saved = true;
-    }
-
-    private void CancelBtn_Click(object? sender, EventArgs e)
-    {
-      // every edit went to the pipeline as it was committed, so there is nothing here to discard - Cancel
-      // puts back the last set that was written down, which is what the dialog opened with unless a Save
-      // has moved that baseline forward since. Unchanged since then, this applies nothing at all.
-      Quiet(() => RestoreControls(RevertParams, RevertFormatId));
-      ApplyIfEdited();
     }
 
     // the DB value is transparent; the populated value keeps the caller's state; any other value is yellow
@@ -569,8 +577,8 @@ namespace SkyRoof
 
       Quiet(() =>
       {
-        ModulationCombo.SelectedItem = Modulation.Unknown;
-        FramingCombo.SelectedItem = Framing.Unknown;
+        SelectCombo(ModulationCombo, Modulation.Unknown);
+        SelectCombo(FramingCombo, Framing.Unknown);
         BaudTextBox.Text = "";
         DeviationTextBox.Text = "";
       });
@@ -642,8 +650,8 @@ namespace SkyRoof
       Original = found;
       Quiet(() =>
       {
-        ModulationCombo.SelectedItem = found.Modulation;
-        FramingCombo.SelectedItem = found.Framing;
+        SelectCombo(ModulationCombo, found.Modulation);
+        SelectCombo(FramingCombo, found.Framing);
         BaudTextBox.Text = FormatRate(found.ResolvedBaud ?? found.Baud);
         DeviationTextBox.Text = FormatRate(found.ResolvedDeviation ?? found.Deviation);
         AfCarrierTextBox.Text = FormatNullable(found.AfCarrier);
@@ -796,8 +804,8 @@ namespace SkyRoof
       var edited = Original with
       {
         Baud = ParseNullable(BaudTextBox.Text) ?? Original.Baud,
-        Modulation = (Modulation)ModulationCombo.SelectedItem,
-        Framing = (Framing)FramingCombo.SelectedItem,
+        Modulation = ModulationCombo.SelectedItem is Modulation modulation ? modulation : Original.Modulation,
+        Framing = FramingCombo.SelectedItem is Framing framing ? framing : Original.Framing,
         Deviation = ParseNullable(DeviationTextBox.Text),
         Manchester = IndexToBool(ManchesterCombo.SelectedIndex),
         Differential = IndexToBool(DifferentialCombo.SelectedIndex),
@@ -822,6 +830,17 @@ namespace SkyRoof
     //----------------------------------------------------------------------------------------------
     //                                         helpers
     //----------------------------------------------------------------------------------------------
+    // DataSource combos compare boxed enum SelectedItem by reference; pick the matching index instead.
+    private static void SelectCombo(ComboBox combo, object? value)
+    {
+      if (combo.DataSource is Array arr)
+        combo.SelectedIndex = Array.IndexOf(arr, value);
+      else if (value == null)
+        combo.SelectedIndex = -1;
+      else
+        combo.SelectedIndex = combo.Items.IndexOf(value);
+    }
+
     private static int BoolToIndex(bool? value) => value switch { true => 1, false => 2, null => 0 };
 
     private static bool? IndexToBool(int index) => index switch { 1 => true, 2 => false, _ => (bool?)null };

@@ -103,6 +103,9 @@ namespace SkyRoof
     // are null unless the operator has pressed Discover; discovery costs nothing when idle.
     private DiscoverySession? Discovery;
     private SignalParamsDialog? ParamsDialog;
+    // opening (or last-saved) demod state so Cancel can put the session back even though the dialog's
+    // Cancel button closes the form before it can round-trip the combos
+    private DialogSession? DialogRevert;
     // the parameters proven enough to persist (§2). DemodValidated says one frame decoded with the params in
     // use — that is what turns the dots green. ConfirmingFrames counts the frames after it, and only when it
     // reaches ConfirmFrames may the set be written to the override file or uploaded to SatNOGS: one frame can
@@ -1074,6 +1077,8 @@ namespace SkyRoof
     internal int RunningDecoderCount => (Decoder != null ? 1 : 0) + BackgroundDecoderCount;
     internal bool HasBackgroundDecoder(string satId, long frequencyHz) =>
       BackgroundTelemetry.IsDecoding(satId, frequencyHz);
+    internal bool HasHeardUnsupportedActivity(string satId, long frequencyHz) =>
+      BackgroundTelemetry.HasHeardActivity(satId, frequencyHz);
 
     private bool IsDecodable()
     {
@@ -1240,19 +1245,24 @@ namespace SkyRoof
       using var dlg = new SignalParamsDialog();
       dlg.DiscoverToggled += ToggleDiscovery;
       dlg.SaveOverrideRequested += SaveOverrideRequested;
-      // every edit is applied as it is committed, so nothing is decided when the dialog closes - OK and
-      // Cancel differ only in that Cancel puts the last written-down set back on its way out (§4.3)
+      // every edit is applied as it is committed. OK keeps that live set; Cancel / Escape / X restore the
+      // snapshot taken here (or the last Save), because the Cancel button's DialogResult closes the form
+      // before the combos can be round-tripped (§4.3)
       dlg.ParamsEdited += ParamsEditedHandler;
       ParamsDialog = dlg;
+      DialogRevert = CaptureDialogSession();
       try
       {
-        dlg.Open(BuildDialogView(), this);
+        var result = dlg.Open(BuildDialogView(), this);
+        if (result != DialogResult.OK && DialogRevert != null)
+          RestoreDialogSession(DialogRevert);
       }
       finally
       {
         // a session must never outlive the dialog it reports to (§7 P2: detach cleanly).
         StopDiscovery();
         ParamsDialog = null;
+        DialogRevert = null;
       }
     }
 
@@ -1492,6 +1502,8 @@ namespace SkyRoof
         // and they are now what Cancel goes back to: a saved set is the recorded truth about this
         // transmitter, so a Cancel after it has nothing to undo (§4.3)
         ParamsDialog.MarkSaved();
+        // Cancel after a save must keep the written set, not the values the dialog opened with
+        DialogRevert = CaptureDialogSession();
         // no frame is due to redraw the line, and it is still counting toward a decision now taken
         ParamsDialog.ShowConfirmingFrames(ConfirmingFrames, ConfirmFrames);
         MessageBox.Show(ParamsDialog, "Saved to transmitters-override.json.", "Signal Details",
@@ -1566,6 +1578,66 @@ namespace SkyRoof
       "Differential" => SignalParams?.Differential != ResolvedSnapshot?.Differential,
       _ => false
     };
+
+    private sealed class DialogSession
+    {
+      public SignalParams? Params;
+      public HashSet<string> UserFields = new();
+      public bool DemodValidated;
+      public TelemetryDefinition? FormatOverride;
+      public string? FormatOverrideId;
+      public bool FormatValidated;
+      public int ConfirmingFrames;
+      public bool OverrideSaved;
+    }
+
+    private DialogSession CaptureDialogSession() => new()
+    {
+      Params = SignalParams is null ? null : SignalParams with { },
+      UserFields = new HashSet<string>(UserChangedFields),
+      DemodValidated = DemodValidated,
+      FormatOverride = FormatOverride,
+      FormatOverrideId = FormatOverrideId,
+      FormatValidated = FormatValidated,
+      ConfirmingFrames = ConfirmingFrames,
+      OverrideSaved = OverrideSaved
+    };
+
+    // Cancel / Escape / the title-bar X: put back the set the dialog opened with (or the last Save).
+    // ApplyDialogResult cannot do this — after the combos are restored, CaptureResult reports no field
+    // changes against the opening values, so it would leave the live Unknown/edited pipeline in place.
+    private void RestoreDialogSession(DialogSession session)
+    {
+      UserChangedFields.Clear();
+      foreach (var field in session.UserFields) UserChangedFields.Add(field);
+      DemodValidated = session.DemodValidated;
+      FormatOverride = session.FormatOverride;
+      FormatOverrideId = session.FormatOverrideId;
+      FormatValidated = session.FormatValidated;
+
+      if (session.Params is null)
+      {
+        SignalParams = null;
+        if (Decoder != null)
+        {
+          Decoder.Purge();
+          var old = Decoder;
+          Decoder = null;
+          CurrentDecode = null;
+          old.Dispose();
+        }
+        CreatDestroyPipeline();
+      }
+      else
+        ApplySignalParamsOverride(session.Params);
+
+      ConfirmingFrames = session.ConfirmingFrames;
+      OverrideSaved = session.OverrideSaved;
+      UpdateUploadHold();
+      UpdateGearButton();
+      UpdateParamsTooltip();
+      UpdateTxStatus();
+    }
 
     // An edit was committed in the open dialog. Apply it at once and hand the dialog back the state it does
     // not own: the dots, the save gate and the countdown all live here, where the frames arrive (§3).

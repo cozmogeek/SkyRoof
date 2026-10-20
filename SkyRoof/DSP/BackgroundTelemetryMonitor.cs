@@ -2,6 +2,7 @@ using MathNet.Numerics;
 using Serilog;
 using SkyRoof.Satellites;
 using VE3NEA;
+using VE3NEA.SkyTlm.Audio;
 using VE3NEA.SkyTlm.Core;
 
 namespace SkyRoof
@@ -14,6 +15,9 @@ namespace SkyRoof
   internal sealed class BackgroundTelemetryMonitor : IDisposable
   {
     // each channel is a full mix/decimate thread on the SDR rate; the cap is Telemetry settings
+    private const double DefaultProbeBaud = 4800;
+    private const double StrongBurstSnrDb = 6;
+    private const int StrongBurstNeed = 2;
 
     private readonly Context ctx;
     private readonly Action<TelemetryDecocder, SatnogsDbSatellite, SatnogsDbTransmitter, SignalParams, int> bind;
@@ -28,7 +32,8 @@ namespace SkyRoof
     }
 
     /// <summary>
-    /// True when a background channel is mixing this satellite at this nominal downlink.
+    /// True when a background decode channel is mixing this satellite at this nominal downlink.
+    /// Probe channels on unsupported rows are excluded — they paint red/yellow, not green.
     /// Other frequencies of the same sat stay unmatched — one bird can have several labels.
     /// </summary>
     internal bool IsDecoding(string satId, long frequencyHz)
@@ -36,7 +41,22 @@ namespace SkyRoof
       lock (gate)
       {
         foreach (var channel in channels.Values)
-          if (channel.Satellite.sat_id == satId && channel.Transmitter.DownlinkLow == frequencyHz)
+          if (!channel.Probe && channel.Satellite.sat_id == satId && channel.Transmitter.DownlinkLow == frequencyHz)
+            return true;
+      }
+      return false;
+    }
+
+    /// <summary>
+    /// True when a probe on this unsupported downlink has heard more than two bursts above 6 dB.
+    /// </summary>
+    internal bool HasHeardActivity(string satId, long frequencyHz)
+    {
+      lock (gate)
+      {
+        foreach (var channel in channels.Values)
+          if (channel.Probe && channel.Satellite.sat_id == satId && channel.Transmitter.DownlinkLow == frequencyHz
+            && Volatile.Read(ref channel.StrongBursts) > StrongBurstNeed)
             return true;
       }
       return false;
@@ -161,12 +181,22 @@ namespace SkyRoof
 
       var slicer = new Slicer(rate, 0, Slicer.Mode.FM_D);
       slicer.Enabled = true;
-      var decoder = new TelemetryDecocder(target.Params, target.Sat.norad_cat_id, telemetry: true, sstv: false,
-        fmEngine: null);
+      var decoder = target.Probe
+        ? new TelemetryDecocder(target.Params, target.Sat.norad_cat_id, telemetry: false, sstv: false,
+            fmEngine: null, detectParams: target.Params)
+        : new TelemetryDecocder(target.Params, target.Sat.norad_cat_id, telemetry: true, sstv: false,
+            fmEngine: null);
 
-      var channel = new Channel(target.Sat, target.Tx, target.Params, target.NominalHz, target.Orbit, slicer, decoder);
+      var channel = new Channel(target.Sat, target.Tx, target.Params, target.NominalHz, target.Orbit, slicer, decoder,
+        target.Probe);
       slicer.IqDataAvailable += (_, iq) => decoder.StartProcessing(iq);
-      bind(decoder, target.Sat, target.Tx, target.Params, target.Orbit);
+      if (target.Probe)
+      {
+        if (decoder.Detector != null)
+          decoder.Detector.BurstDecoded += report => NoteProbeBurst(channel, report);
+      }
+      else
+        bind(decoder, target.Sat, target.Tx, target.Params, target.Orbit);
 
       var engine = PassEngine();
       double sdrHz = ctx.Sdr.Frequency;
@@ -175,16 +205,19 @@ namespace SkyRoof
         && TrySlicerOffset(rf, sdrHz, xverter, out double offset))
         slicer.SetOffset(offset, dopplerRate);
 
-      Log.Information("Background telemetry: start {Sat} {Tx} @ {Hz:F0} Hz",
+      Log.Information(target.Probe
+        ? "Background telemetry: probe {Sat} {Tx} @ {Hz:F0} Hz"
+        : "Background telemetry: start {Sat} {Tx} @ {Hz:F0} Hz",
         target.Sat.name, target.Tx.description, target.NominalHz);
       return channel;
     }
 
     private List<Target> ListWanted()
     {
-      var result = new List<Target>();
-      if (!ctx.Settings.Telemetry.BackgroundDecode) return result;
-      if (ctx.Sdr?.Info == null) return result;
+      var decode = new List<Target>();
+      var probes = new List<Target>();
+      if (!ctx.Settings.Telemetry.BackgroundDecode) return decode;
+      if (ctx.Sdr?.Info == null) return decode;
 
       var skip = foreground();
       var engine = PassEngine();
@@ -208,11 +241,22 @@ namespace SkyRoof
           .GroupBy(tx => tx.DownlinkLow))
         {
           var tx = PickTelemetryTransmitter(pass.Satellite, group);
-          if (tx == null) continue;
-          if (tx.uuid == skip.TransmitterUuid) continue;
+          bool probe = false;
+          SignalParams? parameters;
+          if (tx != null)
+          {
+            parameters = SignalParamsResolver.Resolve(tx);
+            if (!SignalParamsResolver.IsTelemetryDecodable(parameters)) continue;
+          }
+          else
+          {
+            tx = PickProbeTransmitter(group);
+            if (tx == null) continue;
+            probe = true;
+            parameters = ProbeParams(SignalParamsResolver.Resolve(tx));
+          }
 
-          var parameters = SignalParamsResolver.Resolve(tx);
-          if (!SignalParamsResolver.IsTelemetryDecodable(parameters)) continue;
+          if (tx.uuid == skip.TransmitterUuid) continue;
           if (AutoRecorder.NeedsWidebandIq(tx)) continue;
           if (IsLinearTransponder(tx)) continue;
 
@@ -222,16 +266,52 @@ namespace SkyRoof
           rf = ApplyManualDownlinkCorrection(pass.Satellite, rf);
           if (!TrySlicerOffset(rf, sdrHz, xverter, out _)) continue;
 
-          result.Add(new Target(pass.Satellite, tx, parameters!, nominal, pass.OrbitNumber, elevation));
+          var target = new Target(pass.Satellite, tx, parameters!, nominal, pass.OrbitNumber, elevation, probe);
+          (probe ? probes : decode).Add(target);
         }
       }
 
-      return result
+      int limit = BackgroundChannelLimit();
+      var chosen = decode
         .OrderByDescending(t => t.Elevation)
         .ThenByDescending(t => t.Tx.alive)
         .ThenByDescending(t => t.Params.Baud)
-        .Take(BackgroundChannelLimit())
+        .Take(limit)
         .ToList();
+      int leftover = limit - chosen.Count;
+      if (leftover > 0)
+        chosen.AddRange(probes
+          .OrderByDescending(t => t.Elevation)
+          .ThenByDescending(t => t.Tx.alive)
+          .Take(leftover));
+      return chosen;
+    }
+
+    private void NoteProbeBurst(Channel channel, StreamingBurstReport report)
+    {
+      if (double.IsNaN(report.Burst.SnrDb) || report.Burst.SnrDb <= StrongBurstSnrDb) return;
+      int n = Interlocked.Increment(ref channel.StrongBursts);
+      if (n == StrongBurstNeed + 1)
+        Log.Information("Background telemetry: activity on {Sat} {Tx} ({N} bursts > {Snr:0} dB)",
+          channel.Satellite.name, channel.Transmitter.description, n, StrongBurstSnrDb);
+    }
+
+    private static SignalParams ProbeParams(SignalParams? resolved)
+    {
+      var current = resolved ?? new SignalParams(0, Modulation.Unknown, Framing.Unknown, 48000, null);
+      bool digital = current.Modulation is Modulation.FSK or Modulation.GFSK or Modulation.GMSK
+        or Modulation.BPSK or Modulation.AFSK;
+      return current with
+      {
+        Modulation = digital ? current.Modulation : Modulation.FSK,
+        Baud = current.Baud > 0 ? current.Baud : DefaultProbeBaud,
+        Deviation = null,
+        AfCarrier = null,
+        Manchester = null,
+        Framing = Framing.Unknown,
+        ResolvedBaud = null,
+        ResolvedDeviation = null
+      };
     }
 
     private int BackgroundChannelLimit()
@@ -257,6 +337,22 @@ namespace SkyRoof
           && !IsLinearTransponder(c.Tx))
         .OrderByDescending(c => c.Tx.alive)
         .ThenByDescending(c => c.Params!.Baud)
+        .Select(c => c.Tx)
+        .FirstOrDefault();
+    }
+
+    internal static SatnogsDbTransmitter? PickProbeTransmitter(IEnumerable<SatnogsDbTransmitter> sameFrequency)
+    {
+      var transmitters = sameFrequency.ToList();
+      if (!SignalParamsResolver.FrequencyHasTelemetrySettingsGap(transmitters)) return null;
+      return transmitters
+        .Where(tx => !AutoRecorder.NeedsWidebandIq(tx) && !IsLinearTransponder(tx))
+        .Select(tx => (Tx: tx, Params: SignalParamsResolver.Resolve(tx)))
+        .Where(c => !SignalParamsResolver.IsTelemetryDecodable(c.Params)
+          && !SignalParamsResolver.HasSstv(c.Tx)
+          && !SignalParamsResolver.HasCw(c.Tx)
+          && c.Params?.Modulation is not (Modulation.CW or Modulation.FM or Modulation.SSTV))
+        .OrderByDescending(c => c.Tx.alive)
         .Select(c => c.Tx)
         .FirstOrDefault();
     }
@@ -320,7 +416,8 @@ namespace SkyRoof
       SignalParams Params,
       double NominalHz,
       int Orbit,
-      double Elevation);
+      double Elevation,
+      bool Probe);
 
     private sealed class Channel : IDisposable
     {
@@ -332,9 +429,11 @@ namespace SkyRoof
       public readonly Slicer Slicer;
       public readonly TelemetryDecocder Decoder;
       public readonly DopplerRateEstimator Doppler = new();
+      public readonly bool Probe;
+      public int StrongBursts;
 
       public Channel(SatnogsDbSatellite satellite, SatnogsDbTransmitter transmitter, SignalParams signalParams,
-        double nominalHz, int orbit, Slicer slicer, TelemetryDecocder decoder)
+        double nominalHz, int orbit, Slicer slicer, TelemetryDecocder decoder, bool probe)
       {
         Satellite = satellite;
         Transmitter = transmitter;
@@ -343,6 +442,7 @@ namespace SkyRoof
         Orbit = orbit;
         Slicer = slicer;
         Decoder = decoder;
+        Probe = probe;
       }
 
       public void Dispose()
