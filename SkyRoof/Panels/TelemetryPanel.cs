@@ -78,6 +78,12 @@ namespace SkyRoof
     // but a co-channel pair has TWO live pass nodes at once, so the pass a frame or image belongs to is
     // resolved by identity in EnsureCurrentPassNode instead of by position here.
     private TreeNode? Current;
+    // pass trunks in add order, including those the filter has taken off the TreeView. FindPassNode
+    // walks this rather than the visible nodes, so a hidden pass still collects its frames.
+    private readonly List<TreeNode> PassRoots = new();
+    // nodes currently removed from the TreeView because they do not match the filter. Parent is null
+    // for a hidden trunk. Index is the sibling slot at the moment of hiding, used to put it back.
+    private readonly List<(TreeNode? Parent, TreeNode Node, int Index)> HiddenNodes = new();
     private ILogger? FrameLogger;
     private DecodeSnapshot? CurrentDecode;
     // the status label's default text color, captured before any status update recolors it
@@ -1841,9 +1847,9 @@ namespace SkyRoof
     private (TreeNode Node, TxPassInfo Info)? FindPassNode(DecodeSnapshot snapshot, int? orbit = null)
     {
       int n = orbit ?? snapshot.Orbit;
-      for (int i = treeView1.Nodes.Count - 1; i >= 0; i--)
+      for (int i = PassRoots.Count - 1; i >= 0; i--)
       {
-        var node = treeView1.Nodes[i];
+        var node = PassRoots[i];
         if (node.Tag is TxPassInfo info
           && info.IsSamePass(snapshot.Satellite, snapshot.Transmitter, n, snapshot.TerrestrialHz))
           return (node, info);
@@ -1869,9 +1875,9 @@ namespace SkyRoof
       if (key == null) return null;
       var pass = FindSatellitePass(sat);
 
-      for (int i = treeView1.Nodes.Count - 1; i >= 0; i--)
+      for (int i = PassRoots.Count - 1; i >= 0; i--)
       {
-        var node = treeView1.Nodes[i];
+        var node = PassRoots[i];
         if (node.Tag is not TxPassInfo info || info.Orbit > 0) continue;
         if (SatKey(info.Satellite, info.Transmitter) != key) continue;
         if (pass != null)
@@ -1896,6 +1902,7 @@ namespace SkyRoof
       if (orbit > 0) title += $"  #{orbit}";
       if (!double.IsNaN(info.MaxElevationDeg)) title += $"  {info.MaxElevationDeg:F0}°";
       node.Text = title;
+      NoteNodeTextChanged(node);
     }
 
     /// <summary>Returns the pass node this snapshot's content belongs to, and its info, creating the node
@@ -1936,7 +1943,9 @@ namespace SkyRoof
       var txPassInfo = new TxPassInfo(snapshot.Satellite, snapshot.Transmitter, orbit, snapshot.TerrestrialHz,
         snapshot.SignalParams, maxEl);
       passNode.Tag = txPassInfo;
+      PassRoots.Add(passNode);
       treeView1.Nodes.Add(passNode);
+      ApplyFilterAfterAdd(passNode);
       TrackNewNode(passNode);
 
       return (passNode, txPassInfo);
@@ -1955,7 +1964,8 @@ namespace SkyRoof
       bool mustSelect = treeView1.SelectedNode == null
         || (treeView1.SelectedNode == Current && Trunk(treeView1.SelectedNode) == Trunk(newNode));
       Current = newNode;
-      if (mustSelect) treeView1.SelectedNode = newNode;
+      // a node the filter has taken off the TreeView cannot be selected — SelectedNode would throw
+      if (mustSelect && newNode.TreeView != null) treeView1.SelectedNode = newNode;
     }
 
     /// <summary>Adds a leaf under the given pass node. Expands the pass node so the new leaf is visible, unless
@@ -1969,7 +1979,8 @@ namespace SkyRoof
     {
       bool keepCollapsed = !passNode.IsExpanded && passNode.Nodes.Count > 0 && treeView1.SelectedNode == passNode;
       passNode.Nodes.Add(leaf);
-      if (!keepCollapsed) passNode.Expand();
+      ApplyFilterAfterAdd(leaf);
+      if (!keepCollapsed && passNode.TreeView != null) passNode.Expand();
       if (track) TrackNewNode(leaf);
     }
 
@@ -1981,7 +1992,11 @@ namespace SkyRoof
     /// <para>The picture's own node keeps the selection instead, which <c>ShowSsdvImage</c> gives it once
     /// there is something to look at. Selecting THAT leaves it collapsed: only ancestors are expanded.</para>
     /// </summary>
-    private static void AddFragment(TreeNode parent, TreeNode leaf) => parent.Nodes.Add(leaf);
+    private void AddFragment(TreeNode parent, TreeNode leaf)
+    {
+      parent.Nodes.Add(leaf);
+      ApplyFilterAfterAdd(leaf);
+    }
 
     // the header source/destination address and the byte length of the address field, so the caller can label the
     // frame and drop those bytes from the ASCII/HEX payload views. AX.25 G3RUH frames, and USP frames (which
@@ -2201,6 +2216,7 @@ namespace SkyRoof
       info.Bitmap = rendering.ToBitmap();
       if (savedPath != null) info.SavedPath = savedPath;
       node.Text = $"{ClockWidget.Stamp(info.FirstSeen, "HH:mm:ss")}  {evt.Mode}  {evt.ValidRows}/{evt.Image.Height} rows";
+      NoteNodeTextChanged(node);
       if (ImageBox.Image == oldBitmap) ImageBox.Image = info.Bitmap;
       oldBitmap?.Dispose();
 
@@ -2555,6 +2571,7 @@ namespace SkyRoof
         ? $"{ClockWidget.Stamp(info.FirstSeen, "HH:mm:ss")}  Message {product.ImageId}"
         : $"{ClockWidget.Stamp(info.FirstSeen, "HH:mm:ss")}  Image {product.ImageId}  " +
           $"{product.FragmentsReceived}/{product.FragmentsExpected} fragments";
+      NoteNodeTextChanged(node);
 
       // Coalesce the decodes. A Geoscan pass delivers around nine fragments a second and every one of
       // them used to cost a full 800x600 JPEG decode on the UI thread. One picture a second is as fast
@@ -2782,6 +2799,7 @@ namespace SkyRoof
       // the reconstruction plays, and claims nothing more
       node.Text = $"{ClockWidget.Stamp(info.FirstSeen, "HH:mm:ss")}  Voice  " +
         $"{product.SubFramesReceived} sub-frames, {product.DurationSeconds:0.0} s";
+      NoteNodeTextChanged(node);
 
       // an accepted sub-frame is real content: un-gray the pass entry the way a valid frame does
       if (!txPassInfo.HasValidFrame)
@@ -3129,6 +3147,7 @@ namespace SkyRoof
       EnsureFmLeaf(info);
       info.Lines.Add(entry);
       info.Pending = null;   // the open line just closed into this completed entry
+      if (info.Node != null) NoteNodeTextChanged(info.Node);
       if (treeView1.SelectedNode == info.Node) RenderFmTranscript(info);
     }
 
@@ -3136,6 +3155,7 @@ namespace SkyRoof
     {
       EnsureFmLeaf(info);
       info.Pending = pending;
+      if (info.Node != null) NoteNodeTextChanged(info.Node);
       if (treeView1.SelectedNode == info.Node) RenderFmTranscript(info);
     }
 
@@ -3509,7 +3529,210 @@ namespace SkyRoof
       ShowTelemetryText();
       ImageBox.Image = null;
       richTextBox1.Clear();
+      HiddenNodes.Clear();
+      PassRoots.Clear();
       treeView1.Nodes.Clear();
     }
+
+    //----------------------------------------------------------------------------------------------
+    //                                      tree filter
+    //----------------------------------------------------------------------------------------------
+    // WinForms TreeNodes have no Visible flag, so a non-match is removed from the TreeView and kept
+    // in HiddenNodes. PassRoots still holds every trunk, which is why a filtered-out pass can still
+    // receive the next frame.
+    private string FilterQuery => FilterBox.Text.Trim();
+    private bool FilterActive => FilterQuery.Length > 0;
+
+    private void FilterBox_TextChanged(object? sender, EventArgs e)
+    {
+      FilterClearBtn.Enabled = FilterActive;
+      ApplyTreeFilter();
+    }
+
+    private void FilterBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+      if (e.KeyCode != Keys.Escape) return;
+      FilterBox.Clear();
+      e.Handled = e.SuppressKeyPress = true;
+    }
+
+    private void FilterClearBtn_Click(object? sender, EventArgs e) => FilterBox.Clear();
+
+    private void ApplyTreeFilter()
+    {
+      treeView1.BeginUpdate();
+      try
+      {
+        RestoreHiddenNodes();
+        if (!FilterActive) return;
+
+        string q = FilterQuery;
+        foreach (var root in PassRoots.ToArray())
+        {
+          if (!FilterNode(root, q)) HideTreeNode(root);
+        }
+      }
+      finally
+      {
+        treeView1.EndUpdate();
+      }
+    }
+
+    private bool FilterNode(TreeNode node, string q)
+    {
+      if (NodeMatches(node, q)) return true;
+
+      bool any = false;
+      foreach (TreeNode child in node.Nodes.Cast<TreeNode>().ToArray())
+      {
+        if (FilterNode(child, q)) any = true;
+        else HideTreeNode(child);
+      }
+      if (any) node.Expand();
+      return any;
+    }
+
+    private void RestoreHiddenNodes()
+    {
+      if (HiddenNodes.Count == 0) return;
+
+      foreach (var hidden in HiddenNodes
+        .OrderBy(h => h.Parent == null ? 0 : 1)
+        .ThenBy(h => h.Index))
+      {
+        if (hidden.Node.TreeView != null) continue;
+        if (hidden.Parent == null)
+          InsertRoot(hidden.Node);
+        else
+        {
+          int at = Math.Min(hidden.Index, hidden.Parent.Nodes.Count);
+          hidden.Parent.Nodes.Insert(at, hidden.Node);
+        }
+      }
+      HiddenNodes.Clear();
+    }
+
+    private void InsertRoot(TreeNode node)
+    {
+      int at = PassRoots.IndexOf(node);
+      int insertAt = 0;
+      if (at < 0) insertAt = treeView1.Nodes.Count;
+      else
+      {
+        for (int i = 0; i < at; i++)
+          if (PassRoots[i].TreeView != null) insertAt++;
+      }
+      treeView1.Nodes.Insert(insertAt, node);
+    }
+
+    private void HideTreeNode(TreeNode node)
+    {
+      if (node.TreeView == null) return;
+      var parent = node.Parent;
+      int index = node.Index;
+      node.Remove();
+      HiddenNodes.Add((parent, node, index));
+    }
+
+    // a newly added (or newly labelled) node is shown if it matches, or if an ancestor matched and
+    // therefore keeps its whole subtree; otherwise it is taken off the TreeView until the filter changes.
+    private void ApplyFilterAfterAdd(TreeNode node)
+    {
+      if (!FilterActive) return;
+      string q = FilterQuery;
+      if (AncestorMatches(node, q)) return;
+      if (NodeOrDescendantMatches(node, q))
+      {
+        EnsureAncestorsShown(node);
+        node.Parent?.Expand();
+        return;
+      }
+      if (node.TreeView != null) HideTreeNode(node);
+    }
+
+    private void NoteNodeTextChanged(TreeNode node)
+    {
+      if (!FilterActive) return;
+      // already on screen: labels only grow, so a visible match stays a match. A hidden node
+      // whose payload just started matching (SSTV mode, FM transcript) has to be brought back.
+      if (node.TreeView != null) return;
+      if (NodeOrDescendantMatches(node, FilterQuery)) ApplyTreeFilter();
+    }
+
+    private static bool AncestorMatches(TreeNode node, string q)
+    {
+      for (var n = node.Parent; n != null; n = n.Parent)
+        if (NodeMatches(n, q)) return true;
+      return false;
+    }
+
+    private static bool NodeOrDescendantMatches(TreeNode node, string q)
+    {
+      if (NodeMatches(node, q)) return true;
+      foreach (TreeNode child in node.Nodes)
+        if (NodeOrDescendantMatches(child, q)) return true;
+      return false;
+    }
+
+    private void EnsureAncestorsShown(TreeNode node)
+    {
+      var chain = new Stack<TreeNode>();
+      for (var n = node.Parent; n != null; n = n.Parent)
+        chain.Push(n);
+      while (chain.Count > 0)
+      {
+        var ancestor = chain.Pop();
+        RestoreIfHidden(ancestor);
+        ancestor.Expand();
+      }
+    }
+
+    private void RestoreIfHidden(TreeNode node)
+    {
+      int i = HiddenNodes.FindIndex(h => h.Node == node);
+      if (i < 0) return;
+      var hidden = HiddenNodes[i];
+      HiddenNodes.RemoveAt(i);
+      if (node.TreeView != null) return;
+      if (hidden.Parent == null) InsertRoot(node);
+      else hidden.Parent.Nodes.Insert(Math.Min(hidden.Index, hidden.Parent.Nodes.Count), node);
+    }
+
+    private static bool NodeMatches(TreeNode node, string q)
+    {
+      if (ContainsIgnoreCase(node.Text, q)) return true;
+      return node.Tag switch
+      {
+        string text => ContainsIgnoreCase(text, q),
+        TxPassInfo pass => PassMatches(pass, q),
+        IImageNodeInfo image => ContainsIgnoreCase(image.Describe(), q),
+        VoiceMessageInfo voice => ContainsIgnoreCase(voice.Describe(), q),
+        FmTranscriptInfo fm => FmMatches(fm, q),
+        _ => false
+      };
+    }
+
+    private static bool PassMatches(TxPassInfo pass, string q)
+    {
+      if (ContainsIgnoreCase(pass.Satellite?.name, q)) return true;
+      if (pass.Satellite?.norad_cat_id is int norad && norad.ToString().Contains(q)) return true;
+      if (ContainsIgnoreCase(pass.Satellite?.SearchText, q)) return true;
+      if (pass.Orbit > 0 && pass.Orbit.ToString().Contains(q)) return true;
+      if (ContainsIgnoreCase(pass.Transmitter?.description, q)) return true;
+      foreach (var (tx, _) in pass.Sources)
+        if (ContainsIgnoreCase(tx?.description, q)) return true;
+      if (pass.Transmitter == null && ContainsIgnoreCase(DescribeTerrestrial(pass.TerrestrialHz), q))
+        return true;
+      return false;
+    }
+
+    private static bool FmMatches(FmTranscriptInfo fm, string q)
+    {
+      if (fm.Lines.Any(line => ContainsIgnoreCase(line.Text, q))) return true;
+      return ContainsIgnoreCase(fm.Pending?.Text, q);
+    }
+
+    private static bool ContainsIgnoreCase(string? text, string q) =>
+      !string.IsNullOrEmpty(text) && text.Contains(q, StringComparison.OrdinalIgnoreCase);
   }
 }

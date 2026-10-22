@@ -34,6 +34,9 @@
       SettingsButton = new Button();
       StatusLabel = new Label();
       treeView1 = new TreeView();
+      FilterPanel = new Panel();
+      FilterBox = new VE3NEA.TextBoxEx();
+      FilterClearBtn = new Button();
       MenuStrip = new ContextMenuStrip(components);
       richTextBox1 = new RichTextBox();
       splitContainer1 = new SplitContainer();
@@ -57,6 +60,7 @@
       splitContainer1.Panel1.SuspendLayout();
       splitContainer1.Panel2.SuspendLayout();
       splitContainer1.SuspendLayout();
+      FilterPanel.SuspendLayout();
       ((System.ComponentModel.ISupportInitialize)ImageSplitContainer).BeginInit();
       ImageSplitContainer.Panel1.SuspendLayout();
       ImageSplitContainer.SuspendLayout();
@@ -107,13 +111,50 @@
       treeView1.Dock = DockStyle.Fill;
       treeView1.FullRowSelect = true;
       treeView1.HideSelection = false;
-      treeView1.Location = new Point(0, 0);
+      treeView1.Location = new Point(0, 27);
       treeView1.Name = "treeView1";
       treeView1.ShowNodeToolTips = true;
-      treeView1.Size = new Size(247, 526);
+      treeView1.Size = new Size(247, 499);
       treeView1.TabIndex = 3;
       treeView1.AfterSelect += treeView1_AfterSelect;
       treeView1.MouseDown += treeView1_MouseDown;
+      // 
+      // FilterPanel
+      // 
+      FilterPanel.Controls.Add(FilterBox);
+      FilterPanel.Controls.Add(FilterClearBtn);
+      FilterPanel.Dock = DockStyle.Top;
+      FilterPanel.Location = new Point(0, 0);
+      FilterPanel.Name = "FilterPanel";
+      FilterPanel.Padding = new Padding(2, 2, 2, 2);
+      FilterPanel.Size = new Size(247, 27);
+      FilterPanel.TabIndex = 6;
+      // 
+      // FilterBox
+      // 
+      FilterBox.Dock = DockStyle.Fill;
+      FilterBox.Location = new Point(2, 2);
+      FilterBox.Name = "FilterBox";
+      FilterBox.PlaceholderText = "Filter";
+      FilterBox.Size = new Size(219, 23);
+      FilterBox.TabIndex = 0;
+      FilterBox.TextChanged += FilterBox_TextChanged;
+      FilterBox.KeyDown += FilterBox_KeyDown;
+      // 
+      // FilterClearBtn
+      // 
+      FilterClearBtn.Dock = DockStyle.Right;
+      FilterClearBtn.Enabled = false;
+      FilterClearBtn.Font = new Font("Wingdings 2", 9F, FontStyle.Regular, GraphicsUnit.Point, 2);
+      FilterClearBtn.ForeColor = SystemColors.ControlDarkDark;
+      FilterClearBtn.Location = new Point(221, 2);
+      FilterClearBtn.Name = "FilterClearBtn";
+      FilterClearBtn.Size = new Size(24, 23);
+      FilterClearBtn.TabIndex = 1;
+      FilterClearBtn.Text = "Ò";
+      FilterClearBtn.UseVisualStyleBackColor = true;
+      toolTip1.SetToolTip(FilterClearBtn, "Clear filter");
+      FilterClearBtn.Click += FilterClearBtn_Click;
       // 
       // MenuStrip
       // 
@@ -143,6 +184,7 @@
       // splitContainer1.Panel1
       // 
       splitContainer1.Panel1.Controls.Add(treeView1);
+      splitContainer1.Panel1.Controls.Add(FilterPanel);
       // 
       // splitContainer1.Panel2
       // 
@@ -289,6 +331,8 @@
       MenuStrip.ResumeLayout(false);
       splitContainer1.Panel1.ResumeLayout(false);
       splitContainer1.Panel2.ResumeLayout(false);
+      FilterPanel.ResumeLayout(false);
+      FilterPanel.PerformLayout();
       ((System.ComponentModel.ISupportInitialize)splitContainer1).EndInit();
       splitContainer1.ResumeLayout(false);
       ImageSplitContainer.Panel1.ResumeLayout(false);
@@ -306,6 +350,9 @@
     private Button SettingsButton;
     public Label StatusLabel;
     private TreeView treeView1;
+    private Panel FilterPanel;
+    private VE3NEA.TextBoxEx FilterBox;
+    private Button FilterClearBtn;
     private RichTextBox richTextBox1;
     private SplitContainer splitContainer1;
     private ContextMenuStrip MenuStrip;
