@@ -217,7 +217,8 @@ namespace SkyRoof
     private sealed class SstvImageInfo : IImageNodeInfo
     {
       internal readonly DecodeSnapshot Snapshot;
-      internal readonly DateTime FirstSeen = DateTime.UtcNow;
+      internal readonly DateTime FirstSeen;
+      internal readonly double? StartElevationDeg;
       internal SstvImageEvent Event;
       public Bitmap? Bitmap { get; set; }
       // SSTV is always a picture: there is no text-carrying flavour of it
@@ -234,10 +235,13 @@ namespace SkyRoof
       // how Rendering was produced, for the info pane; null while it is the unfiltered reconstruction
       internal string? Filter;
 
-      internal SstvImageInfo(DecodeSnapshot snapshot, SstvImageEvent evt)
+      internal SstvImageInfo(DecodeSnapshot snapshot, SstvImageEvent evt, DateTime firstSeen,
+        double? startElevationDeg)
       {
         Snapshot = snapshot;
         Event = evt;
+        FirstSeen = firstSeen;
+        StartElevationDeg = startElevationDeg;
         Rendering = evt.Image;
       }
 
@@ -249,14 +253,21 @@ namespace SkyRoof
           $"Mode: {Event.Mode}\r\n" +
           $"VIS: {(Event.FromVis ? "decoded" : "not decoded, mode from sync cadence")}\r\n" +
           $"Rows: {Event.ValidRows} of {Event.Image.Height}\r\n" +
+          (StartElevationDeg is double el ? $"Elevation: {el:F0}°\r\n" : "") +
           $"Status: {(Event.Final ? "complete" : "receiving...")}\r\n" +
           (Filter != null ? $"Filter: {Filter}\r\n" : "") +
           (SavedPath != null ? $"Saved: {SavedPath}\r\n" : "");
       }
 
       public string SaveFilter => "PNG Image|*.png";
-      // saved file names stay in local time whatever the clock widget shows, see NameMatches
-      public string SaveFileName => $"{FirstSeen.ToLocalTime():yyyyMMdd_HHmmss}_{Event.Mode}.png";
+      public string SaveFileName
+      {
+        get
+        {
+          string el = StartElevationDeg is double d && !double.IsNaN(d) ? $"_{d:F0}deg" : "";
+          return $"{FirstSeen.ToUniversalTime():yyyyMMdd_HHmmss}Z{el}_{Event.Mode}.png";
+        }
+      }
       public void SaveAs(string path) => Rendering.SavePng(path);
       // a node exists only once the decoder has a reconstruction, so there is always a picture to write
       public bool CanSave => true;
@@ -547,6 +558,8 @@ namespace SkyRoof
 
       // one trunk per satellite+orbit (or terrestrial frequency). Transmitters of the same bird
       // in the same pass share the node so interleaved background decodes do not spawn a forest.
+      // Orbit <= 0 is "not known yet", not orbit zero: it must not match another unknown-orbit
+      // decode from a later pass, or that first trunk becomes a magnet with no #orbit in the title.
       internal bool IsSamePass(SatnogsDbSatellite? satellite, SatnogsDbTransmitter? transmitter, int orbit,
         double terrestrialHz)
       {
@@ -554,7 +567,9 @@ namespace SkyRoof
           return Transmitter == null && transmitter == null && TerrestrialHz == terrestrialHz;
         string? key = SatKey(Satellite, Transmitter);
         string? other = SatKey(satellite, transmitter);
-        return key != null && key == other && Orbit == orbit;
+        if (key == null || key != other) return false;
+        if (Orbit <= 0 || orbit <= 0) return false;
+        return Orbit == orbit;
       }
 
       internal void NoteSource(SatnogsDbTransmitter? transmitter, SignalParams? signalParams)
@@ -988,13 +1003,7 @@ namespace SkyRoof
         // else — no frames, no tree entry, no status label, because nothing here was decoded.
         if (Decoder.Detector != null) Decoder.Detector.BurstDecoded += OfferToDiscovery;
         if (Decoder.Sstv != null)
-        {
-          // the image-id → tree-node map lives in the subscription closure, so images from a disposed
-          // decoder's flush can never collide with ids of the next decoder's images
-          var imageNodes = new Dictionary<int, TreeNode>();
-          Decoder.Sstv.ImageUpdated += evt => SstvImageHandler(evt, sstvSnapshot, imageNodes);
-          Decoder.Sstv.ImageCompleted += evt => SstvImageHandler(evt, sstvSnapshot, imageNodes);
-        }
+          BindSstvEvents(Decoder.Sstv, sstvSnapshot);
         if (Decoder.Fm != null)
         {
           // the single "FM Speech" leaf's state lives in this closure, so a disposed decoder's flush lines
@@ -1018,33 +1027,52 @@ namespace SkyRoof
     private void BindBackgroundDecoder(TelemetryDecocder decoder, SatnogsDbSatellite sat,
       SatnogsDbTransmitter tx, SignalParams signalParams, int orbit)
     {
-      int resolved = OrbitFor(sat);
+      int resolved = orbit > 0 ? orbit : OrbitFor(sat);
       if (resolved < 0) resolved = orbit;
       var snapshot = new DecodeSnapshot(sat, tx, signalParams, resolved, background: true);
       BindTelemetryEvents(decoder, snapshot);
+      if (decoder.Sstv != null)
+        BindSstvEvents(decoder.Sstv, SstvSnapshot(snapshot));
     }
 
-    private int OrbitFor(SatnogsDbSatellite? sat) => FindSatellitePass(sat)?.OrbitNumber ?? -1;
+    private int OrbitFor(SatnogsDbSatellite? sat)
+    {
+      int n = FindSatellitePass(sat)?.OrbitNumber ?? -1;
+      return n > 0 ? n : -1;
+    }
+
+    private SatellitePasses? PassEngine()
+    {
+      bool ham = ctx.Sdr == null || SatnogsDbTransmitter.IsHamFrequency(ctx.FrequencyControl.GetSdrRfCenter());
+      return ham ? ctx.HamPasses : ctx.SdrPasses;
+    }
 
     private SatellitePass? FindSatellitePass(SatnogsDbSatellite? sat, int? orbit = null)
     {
-      if (sat == null || ctx.HamPasses == null || ctx.SdrPasses == null) return null;
-      var now = DateTime.UtcNow;
-      bool ham = ctx.Sdr == null || SatnogsDbTransmitter.IsHamFrequency(ctx.FrequencyControl.GetSdrRfCenter());
-      SatellitePasses engine = ham ? ctx.HamPasses : ctx.SdrPasses;
-      var passes = engine.GetPassesSnapshot();
-      if (orbit is int n && n >= 0)
+      if (sat == null) return null;
+      var engine = PassEngine();
+      if (engine == null) return null;
+
+      if (orbit is int n && n > 0)
       {
-        var match = passes.LastOrDefault(p => p.Satellite.sat_id == sat.sat_id && p.OrbitNumber == n);
+        var match = engine.GetPassesSnapshot()
+          .LastOrDefault(p => p.Satellite.sat_id == sat.sat_id && p.OrbitNumber == n);
         if (match != null) return match;
+        SatellitePasses? other = ReferenceEquals(engine, ctx.HamPasses) ? ctx.SdrPasses : ctx.HamPasses;
+        return other?.GetPassesSnapshot()
+          .LastOrDefault(p => p.Satellite.sat_id == sat.sat_id && p.OrbitNumber == n);
       }
-      return passes.FirstOrDefault(p =>
-          p.Satellite.sat_id == sat.sat_id && p.StartTime <= now && p.EndTime >= now);
+
+      // GetCurrentOrNextPass, not a snapshot window test: the pipeline can start on SGP4 elevation
+      // slightly before the visibility period's StartTime, and a snapshot miss left Orbit = -1 for
+      // the life of the decoder — every later pass of that sat then piled onto one unlabelled trunk.
+      return engine.GetCurrentOrNextPass(sat, SatellitePasses.LosGracePeriod);
     }
 
     // telemetry / SSDV / voice handlers captured against this snapshot so a later transmitter
-    // change cannot misfile this decoder's output. SSTV and FM stay on CreatDestroyPipeline:
-    // they belong to the selected downlink only.
+    // change cannot misfile this decoder's output. FM stays on CreatDestroyPipeline (selected
+    // downlink only). SSTV is bound here for background channels and on CreatDestroyPipeline
+    // for the selection.
     private void BindTelemetryEvents(TelemetryDecocder decoder, DecodeSnapshot snapshot)
     {
       var pushed = new PushOutcome();
@@ -1146,11 +1174,12 @@ namespace SkyRoof
     // Modulation.SSTV) neither, in which case the telemetry snapshot's identity is reused unchanged.
     private DecodeSnapshot SstvSnapshot(DecodeSnapshot telemetrySnapshot)
     {
-      var tx = CoChannel.SstvTransmitter(Satellite, Transmitter);
+      var tx = CoChannel.SstvTransmitter(telemetrySnapshot.Satellite, telemetrySnapshot.Transmitter);
       if (tx == null || ReferenceEquals(tx, telemetrySnapshot.Transmitter)) return telemetrySnapshot;
       // the same orbit: both branches belong to the one pass this decoder was built for
-      return new DecodeSnapshot(Satellite, tx, SignalParamsResolver.Resolve(tx) ?? telemetrySnapshot.SignalParams,
-        telemetrySnapshot.Orbit);
+      return new DecodeSnapshot(telemetrySnapshot.Satellite, tx,
+        SignalParamsResolver.Resolve(tx) ?? telemetrySnapshot.SignalParams,
+        telemetrySnapshot.Orbit, telemetrySnapshot.TerrestrialHz, telemetrySnapshot.Background);
     }
 
     private void BurstDecodedHandler(StreamingBurstReport report, DecodeSnapshot snapshot)
@@ -1809,17 +1838,64 @@ namespace SkyRoof
       _ => ""
     };
 
-    private (TreeNode Node, TxPassInfo Info)? FindPassNode(DecodeSnapshot snapshot)
+    private (TreeNode Node, TxPassInfo Info)? FindPassNode(DecodeSnapshot snapshot, int? orbit = null)
     {
-      int orbit = snapshot.Orbit;
+      int n = orbit ?? snapshot.Orbit;
       for (int i = treeView1.Nodes.Count - 1; i >= 0; i--)
       {
         var node = treeView1.Nodes[i];
         if (node.Tag is TxPassInfo info
-          && info.IsSamePass(snapshot.Satellite, snapshot.Transmitter, orbit, snapshot.TerrestrialHz))
+          && info.IsSamePass(snapshot.Satellite, snapshot.Transmitter, n, snapshot.TerrestrialHz))
           return (node, info);
       }
       return null;
+    }
+
+    private int ResolvedOrbit(DecodeSnapshot snapshot)
+    {
+      if (snapshot.Orbit > 0) return snapshot.Orbit;
+      var sat = snapshot.Satellite ?? snapshot.Transmitter?.Satellite;
+      return OrbitFor(sat);
+    }
+
+    /// <summary>An unlabelled trunk for this sat started during the visibility period we are still in.
+    /// Used to stamp #orbit/elevation onto a node that was created before the pass list had the orbit,
+    /// and to keep this pass's frames together until that stamp, without attracting the next orbit.</summary>
+    private (TreeNode Node, TxPassInfo Info)? FindOpenUnknownPassNode(DecodeSnapshot snapshot)
+    {
+      if (snapshot.Transmitter == null) return null;
+      var sat = snapshot.Satellite ?? snapshot.Transmitter.Satellite;
+      string? key = SatKey(sat, snapshot.Transmitter);
+      if (key == null) return null;
+      var pass = FindSatellitePass(sat);
+
+      for (int i = treeView1.Nodes.Count - 1; i >= 0; i--)
+      {
+        var node = treeView1.Nodes[i];
+        if (node.Tag is not TxPassInfo info || info.Orbit > 0) continue;
+        if (SatKey(info.Satellite, info.Transmitter) != key) continue;
+        if (pass != null)
+        {
+          if (info.StartTime >= pass.StartTime && info.StartTime <= pass.EndTime)
+            return (node, info);
+        }
+        else if (DateTime.UtcNow - info.StartTime < TimeSpan.FromMinutes(20))
+          return (node, info);
+      }
+      return null;
+    }
+
+    private void AdoptPassIdentity(TreeNode node, TxPassInfo info, SatnogsDbSatellite? sat, int orbit)
+    {
+      info.Orbit = orbit;
+      var pass = FindSatellitePass(sat, orbit);
+      if (pass != null) info.MaxElevationDeg = pass.MaxElevation;
+
+      string name = sat?.name ?? info.Satellite?.name ?? info.Transmitter?.Satellite?.name ?? "Unknown";
+      string title = $"{ClockWidget.Stamp(info.StartTime, "yyyy-MM-dd HH:mm")} {name}";
+      if (orbit > 0) title += $"  #{orbit}";
+      if (!double.IsNaN(info.MaxElevationDeg)) title += $"  {info.MaxElevationDeg:F0}°";
+      node.Text = title;
     }
 
     /// <summary>Returns the pass node this snapshot's content belongs to, and its info, creating the node
@@ -1830,16 +1906,26 @@ namespace SkyRoof
     /// share one trunk so interleaved background decodes do not alternate new roots.</summary>
     private (TreeNode Node, TxPassInfo Info) EnsureCurrentPassNode(DecodeSnapshot snapshot, bool grayUntilContent = true)
     {
-      if (FindPassNode(snapshot) is { } existing)
+      int orbit = ResolvedOrbit(snapshot);
+
+      if (orbit > 0 && FindPassNode(snapshot, orbit) is { } existing)
       {
         existing.Info.NoteSource(snapshot.Transmitter, snapshot.SignalParams);
         return existing;
       }
 
-      int orbit = snapshot.Orbit;
+      if (FindOpenUnknownPassNode(snapshot) is { } unknown)
+      {
+        if (orbit > 0)
+          AdoptPassIdentity(unknown.Node, unknown.Info, snapshot.Satellite ?? snapshot.Transmitter?.Satellite, orbit);
+        unknown.Info.NoteSource(snapshot.Transmitter, snapshot.SignalParams);
+        return unknown;
+      }
+
       var sat = snapshot.Satellite ?? snapshot.Transmitter?.Satellite;
-      var pass = snapshot.Transmitter == null ? null : FindSatellitePass(sat, orbit);
+      var pass = snapshot.Transmitter == null ? null : FindSatellitePass(sat, orbit > 0 ? orbit : null);
       double maxEl = pass?.MaxElevation ?? double.NaN;
+      if (orbit <= 0 && pass != null && pass.OrbitNumber > 0) orbit = pass.OrbitNumber;
 
       string title = snapshot.Transmitter == null ? DescribeTerrestrial(snapshot.TerrestrialHz)
         : sat?.name ?? snapshot.Transmitter.Satellite.name;
@@ -2030,16 +2116,39 @@ namespace SkyRoof
     // called on the decode worker thread (or on the UI thread when a disposed decoder flushes); the
     // finalized image is auto-saved here, before marshaling, so a pass ending with the panel closing
     // cannot lose it
-    private void SstvImageHandler(SstvImageEvent evt, DecodeSnapshot snapshot, Dictionary<int, TreeNode> imageNodes)
+    private void BindSstvEvents(SstvDecoder sstv, DecodeSnapshot snapshot)
     {
+      // per-decoder maps so a disposed decoder's flush cannot collide with the next decoder's image ids
+      var imageNodes = new Dictionary<int, TreeNode>();
+      var started = new Dictionary<int, (DateTime Utc, double? ElevationDeg)>();
+      sstv.ImageUpdated += evt => SstvImageHandler(evt, snapshot, imageNodes, started);
+      sstv.ImageCompleted += evt => SstvImageHandler(evt, snapshot, imageNodes, started);
+    }
+
+    private void SstvImageHandler(SstvImageEvent evt, DecodeSnapshot snapshot, Dictionary<int, TreeNode> imageNodes,
+      Dictionary<int, (DateTime Utc, double? ElevationDeg)> started)
+    {
+      if (!started.ContainsKey(evt.ImageId))
+        started[evt.ImageId] = (DateTime.UtcNow, CurrentElevationDeg(snapshot.Satellite));
+      var start = started[evt.ImageId];
+
       // the finalized image is filtered once, here, with the auto-save filter from the settings, so the
       // picture on display and the picture on disk are the same one
       var rendering = evt.Image;
       string? filter = null;
       if (evt.Final) (rendering, filter) = ApplySaveFilter(evt, ctx.Settings.Telemetry.SstvSaveFilter);
 
-      string? savedPath = evt.Final && evt.ValidRows > 0 ? SaveImageToFile(evt, rendering, snapshot) : null;
-      BeginInvoke(() => ShowImage(evt, rendering, filter, snapshot, imageNodes, savedPath));
+      string? savedPath = evt.Final && evt.ValidRows > 0
+        ? SaveImageToFile(evt, rendering, snapshot, start.Utc, start.ElevationDeg) : null;
+      BeginInvoke(() => ShowImage(evt, rendering, filter, snapshot, imageNodes, savedPath, start.Utc,
+        start.ElevationDeg));
+    }
+
+    private double? CurrentElevationDeg(SatnogsDbSatellite? sat)
+    {
+      if (sat == null) return null;
+      double? el = ctx.SdrPasses?.ObserveSatellite(sat, DateTime.UtcNow)?.Elevation.Degrees;
+      return el is double d && !double.IsNaN(d) ? d : null;
     }
 
     // The finalized picture with the auto-save filter applied, and its description for the info pane.
@@ -2067,7 +2176,7 @@ namespace SkyRoof
     }
 
     private void ShowImage(SstvImageEvent evt, RgbImage rendering, string? filter, DecodeSnapshot snapshot,
-      Dictionary<int, TreeNode> imageNodes, string? savedPath)
+      Dictionary<int, TreeNode> imageNodes, string? savedPath, DateTime firstSeen, double? startElevationDeg)
     {
       var (passNode, txPassInfo) = EnsureCurrentPassNode(snapshot);
 
@@ -2075,7 +2184,7 @@ namespace SkyRoof
       if (isNew)
       {
         node = new TreeNode { ContextMenuStrip = ImageMenu };
-        node.Tag = new SstvImageInfo(snapshot, evt);
+        node.Tag = new SstvImageInfo(snapshot, evt, firstSeen, startElevationDeg);
         imageNodes[evt.ImageId] = node;
         txPassInfo.ImageCount++;
         AddLeaf(passNode, node);
@@ -2102,7 +2211,7 @@ namespace SkyRoof
         passNode.ForeColor = Color.Empty;
       }
 
-      if (!evt.Final) UpdateStatusLabel("DECODING...", Color.Green);
+      if (!evt.Final && !snapshot.Background) UpdateStatusLabel("DECODING...", Color.Green);
 
       if (treeView1.SelectedNode == node) DisplayImageInfo(info);
       else if (treeView1.SelectedNode == passNode) richTextBox1.Text = DescribePassSummary(txPassInfo);
@@ -2122,6 +2231,7 @@ namespace SkyRoof
     /// what un-grays the pass node — so the picture goes on rendering behind the dialog.</summary>
     private void CheckSendAmsatReport(DecodeSnapshot snapshot, SstvImageEvent evt)
     {
+      if (snapshot.Background) return;
       if (!ctx.Settings.Telemetry.ReportToAmsat) return;
       if (evt.ValidRows == 0) return;
 
@@ -2195,18 +2305,22 @@ namespace SkyRoof
 
     /// <summary>Auto-save the finalized image as PNG + JSON metadata sidecar under the user data folder.
     /// <paramref name="rendering"/> is the picture with the auto-save filter applied, see ApplySaveFilter.</summary>
-    private static string? SaveImageToFile(SstvImageEvent evt, RgbImage rendering, DecodeSnapshot snapshot)
+    private static string? SaveImageToFile(SstvImageEvent evt, RgbImage rendering, DecodeSnapshot snapshot,
+      DateTime startUtc, double? startElevationDeg)
     {
       try
       {
         string folder = Path.Combine(Utils.GetUserDataFolder(), "SstvImages");
         string sat = string.Concat((snapshot.Satellite?.name ?? "Unknown").Split(Path.GetInvalidFileNameChars()));
-        string path = Path.Combine(folder, $"{DateTime.Now:yyyyMMdd_HHmmss}_{sat}_{evt.Mode}_{evt.ImageId}.png");
+        string el = startElevationDeg is double d && !double.IsNaN(d) ? $"_{d:F0}deg" : "";
+        string path = Path.Combine(folder, $"{startUtc:yyyyMMdd_HHmmss}Z_{sat}{el}_{evt.Mode}_{evt.ImageId}.png");
         rendering.SavePng(path);
 
         var meta = new
         {
-          Utc = DateTime.UtcNow,
+          Utc = startUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
+          Local = startUtc.ToLocalTime().ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture),
+          ElevationDeg = startElevationDeg is double elDeg && !double.IsNaN(elDeg) ? Math.Round(elDeg, 1) : (double?)null,
           Satellite = snapshot.Satellite?.name,
           Norad = snapshot.Satellite?.norad_cat_id,
           Transmitter = snapshot.Transmitter?.description,

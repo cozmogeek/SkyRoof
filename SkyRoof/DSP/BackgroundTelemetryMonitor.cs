@@ -181,10 +181,11 @@ namespace SkyRoof
 
       var slicer = new Slicer(rate, 0, Slicer.Mode.FM_D);
       slicer.Enabled = true;
+      bool telemetry = !target.Probe && SignalParamsResolver.IsTelemetryDecodable(target.Params);
       var decoder = target.Probe
         ? new TelemetryDecocder(target.Params, target.Sat.norad_cat_id, telemetry: false, sstv: false,
             fmEngine: null, detectParams: target.Params)
-        : new TelemetryDecocder(target.Params, target.Sat.norad_cat_id, telemetry: true, sstv: false,
+        : new TelemetryDecocder(target.Params, target.Sat.norad_cat_id, telemetry, target.Sstv,
             fmEngine: null);
 
       var channel = new Channel(target.Sat, target.Tx, target.Params, target.NominalHz, target.Orbit, slicer, decoder,
@@ -242,11 +243,20 @@ namespace SkyRoof
         {
           var tx = PickTelemetryTransmitter(pass.Satellite, group);
           bool probe = false;
+          bool sstv = false;
           SignalParams? parameters;
           if (tx != null)
           {
             parameters = SignalParamsResolver.Resolve(tx);
             if (!SignalParamsResolver.IsTelemetryDecodable(parameters)) continue;
+            sstv = group.Any(SignalParamsResolver.HasSstv);
+          }
+          else if (PickSstvTransmitter(group) is SatnogsDbTransmitter sstvTx)
+          {
+            tx = sstvTx;
+            sstv = true;
+            parameters = SignalParamsResolver.Resolve(tx)
+              ?? new SignalParams(0, Modulation.SSTV, Framing.Unknown, 48000, null);
           }
           else
           {
@@ -266,7 +276,7 @@ namespace SkyRoof
           rf = ApplyManualDownlinkCorrection(pass.Satellite, rf);
           if (!TrySlicerOffset(rf, sdrHz, xverter, out _)) continue;
 
-          var target = new Target(pass.Satellite, tx, parameters!, nominal, pass.OrbitNumber, elevation, probe);
+          var target = new Target(pass.Satellite, tx, parameters!, nominal, pass.OrbitNumber, elevation, probe, sstv);
           (probe ? probes : decode).Add(target);
         }
       }
@@ -338,6 +348,16 @@ namespace SkyRoof
         .OrderByDescending(c => c.Tx.alive)
         .ThenByDescending(c => c.Params!.Baud)
         .Select(c => c.Tx)
+        .FirstOrDefault();
+    }
+
+    internal static SatnogsDbTransmitter? PickSstvTransmitter(IEnumerable<SatnogsDbTransmitter> sameFrequency)
+    {
+      return sameFrequency
+        .Where(tx => !AutoRecorder.NeedsWidebandIq(tx) && !IsLinearTransponder(tx))
+        .Where(tx => SignalParamsResolver.HasSstv(tx)
+          || SignalParamsResolver.Resolve(tx)?.Modulation == Modulation.SSTV)
+        .OrderByDescending(tx => tx.alive)
         .FirstOrDefault();
     }
 
@@ -417,7 +437,8 @@ namespace SkyRoof
       double NominalHz,
       int Orbit,
       double Elevation,
-      bool Probe);
+      bool Probe,
+      bool Sstv);
 
     private sealed class Channel : IDisposable
     {
