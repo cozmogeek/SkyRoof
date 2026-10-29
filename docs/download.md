@@ -4,7 +4,7 @@
 
 ### Current Version
 
-[SkyRoof v.1.56](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.56/SkyRoofSetup-v.1.56.exe)
+[SkyRoof v.1.57](https://github.com/VE3NEA/SkyRoof/releases/download/v.1.57/SkyRoofSetup-v.1.57.exe)
 
 <br>
 
@@ -15,6 +15,12 @@ See [All Releases](https://github.com/VE3NEA/SkyRoof/releases)
 <br>
 
 ### Release Notes
+
+#### v.1.57
+
+- FT4 Console: nonstandard callsigns, such as VE3NEA/MM, use the WSJT-X message formats
+- fixed a crash when the remote SoapySDR server restarts
+- groups and satellites sorted in the Satellite Groups dialog
 
 #### v.1.56
 
