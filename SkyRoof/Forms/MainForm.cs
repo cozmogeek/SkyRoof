@@ -742,7 +742,18 @@ namespace SkyRoof
       dlg.Filter = "JSON Files (*.json)|*.json|Text Files (*.txt)|*.txt|All Files (*.*)|*.*";
       if (dlg.ShowDialog() != DialogResult.OK) return;
 
-      ctx.SatnogsDb.LoadTleFromFile(dlg.FileName);
+      try
+      {
+        int loaded = ctx.SatnogsDb.LoadTleFromFile(dlg.FileName);
+        string noun = loaded == 1 ? "satellite" : "satellites";
+        MessageBox.Show($"Data for {loaded} {noun} loaded.",
+          "Load TLE From File", MessageBoxButtons.OK, MessageBoxIcon.Information);
+      }
+      catch (Exception ex)
+      {
+        MessageBox.Show($"Failed to load TLE data:\n\n{ex.Message}",
+          "Load TLE From File", MessageBoxButtons.OK, MessageBoxIcon.Error);
+      }
     }
 
     private void DataFolderMNU_Click(object sender, EventArgs e)
@@ -1426,10 +1437,10 @@ namespace SkyRoof
       ctx.MonitoredSatellites.Sanitize(ctx.SatnogsDb);
       ShowSatDataStatus();
 
-      ctx.HamPasses.Rebuild();
-      ctx.GroupPasses.Rebuild();
-      ctx.SdrPasses.Rebuild();
-      ctx.MonitoredPasses.Rebuild();
+      ctx.HamPasses.FullRebuild();
+      ctx.GroupPasses.FullRebuild();
+      ctx.SdrPasses.FullRebuild();
+      ctx.MonitoredPasses.FullRebuild();
 
       ctx.SatelliteSelector.SetSelectedPass(null);
       ctx.GroupViewPanel?.LoadGroup(); // replace passes attached to sats

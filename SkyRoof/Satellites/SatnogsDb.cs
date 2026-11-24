@@ -309,10 +309,7 @@ namespace SkyRoof
     {
       string json = File.ReadAllText(Path.Combine(DownloadsFolder, "tle.json"));
       SatnogsDbTleList tles = JsonConvert.DeserializeObject<SatnogsDbTleList>(json, JsonSettings)!;
-
-      foreach (SatnogsDbTle tle in tles)
-        if (SatelliteList.TryGetValue(tle.sat_id, out SatnogsDbSatellite sat))
-          sat.Tle = tle;
+      ApplyTles(tles);
     }
 
     // Match gr-satellites satyaml entries to transmitters by NORAD + nearest baud, attach gr_sats.
@@ -509,7 +506,7 @@ namespace SkyRoof
       }
     }
 
-    internal void LoadTleFromFile(string tleFileName)
+    internal int LoadTleFromFile(string tleFileName)
     {
       Log.Information($"Loading TLE from file: {tleFileName}");
 
@@ -519,19 +516,17 @@ namespace SkyRoof
       try
       {
         if (Path.GetExtension(tleFileName).ToLower() == ".json")
-          tles = JsonConvert.DeserializeObject<SatnogsDbTleList>(tleContent, JsonSettings)!;
+          tles = JsonConvert.DeserializeObject<SatnogsDbTleList>(tleContent, JsonSettings)
+            ?? throw new ArgumentException("The file did not contain TLE data.");
         else
           tles = TlesFromText(tleContent);
 
-        foreach (var tle in tles)
-        {
-          var sat = Satellites.FirstOrDefault(s => s.norad_cat_id == tle.norad_cat_id);
-          if (sat != null) sat.Tle = tle;
-        }
+        int loaded = ApplyTles(tles);
 
         SaveToFile();
         TleUpdated?.Invoke(this, EventArgs.Empty);
-        Log.Information($"TLE loaded");
+        Log.Information("TLE loaded for {Count} satellites", loaded);
+        return loaded;
       }
       catch (Exception ex)
       {
@@ -539,6 +534,44 @@ namespace SkyRoof
         throw;
       }
     }
+
+    // One TLE per satellite. SatNOGS sometimes lists the same sat twice (current catalog
+    // number, then an older NORAD); last-wins used to apply the stale one. Keep the later
+    // epoch, and on a tie keep the first. Match by sat_id, then NORAD, then follow-id, so a
+    // catalog-number change still finds the existing satellite.
+    private int ApplyTles(IEnumerable<SatnogsDbTle> tles)
+    {
+      var chosen = new Dictionary<SatnogsDbSatellite, SatnogsDbTle>();
+      foreach (var tle in tles)
+      {
+        var sat = FindSatelliteForTle(tle);
+        if (sat == null) continue;
+        if (!chosen.TryGetValue(sat, out var existing) || TleIsNewer(tle, existing))
+          chosen[sat] = tle;
+      }
+
+      foreach (var (sat, tle) in chosen)
+      {
+        sat.ApplyTle(tle);
+        sat.BuildAllNames();
+      }
+      return chosen.Count;
+    }
+
+    private SatnogsDbSatellite? FindSatelliteForTle(SatnogsDbTle tle)
+    {
+      if (!string.IsNullOrEmpty(tle.sat_id) && SatelliteList.TryGetValue(tle.sat_id, out var byId))
+        return byId;
+      if (tle.norad_cat_id is not int norad) return null;
+      return Satellites.FirstOrDefault(s => s.norad_cat_id == norad)
+        ?? Satellites.FirstOrDefault(s => s.norad_follow_id == norad);
+    }
+
+    private static bool TleIsNewer(SatnogsDbTle candidate, SatnogsDbTle incumbent) =>
+      TleEpoch(candidate) > TleEpoch(incumbent);
+
+    private static DateTime TleEpoch(SatnogsDbTle tle) =>
+      SatelliteTracker.CreateSgpTle(tle)?.Epoch ?? tle.updated;
 
     private SatnogsDbTleList TlesFromText(string tleContent)
     {

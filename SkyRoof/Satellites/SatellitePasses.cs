@@ -177,24 +177,28 @@ namespace SkyRoof
     // rebuilds list of valid satellites, recomputes all passes
     public virtual void FullRebuild()
     {            
-      Satellites = ListSatellites().Where(sat => sat.Tle != null && sat.IsAlive()).ToList();
+      Satellites = ListPredictableSatellites();
 
       var now = DateTime.UtcNow;
       Passes = ComputePasses(now, now + PredictionTimeSpan).ToList();
     }
 
     // call when TLE changes
-    // recomputes all active and future passes      
+    // refresh which sats have elements — a file load can give TLE to a sat that was excluded —
+    // then recompute current and future passes, keeping a short history
     public virtual void Rebuild()
     {
-      // keep historical passes
+      Satellites = ListPredictableSatellites();
+
       var now = DateTime.UtcNow;
       var historyStartTime = now - HistoryTimeSpan;
       Passes = Passes.Where(p => p.EndTime > historyStartTime && p.EndTime < now).ToList();
 
-      // recompute all current and future passes
       Passes.AddRange(ComputePasses(now, now + PredictionTimeSpan));
     }
+
+    private List<SatnogsDbSatellite> ListPredictableSatellites() =>
+      ListSatellites().Where(sat => sat.Tle != null && (sat.IsAlive() || sat.status == "future")).ToList();
 
     // call every minute
     public virtual SatellitePass[] PredictMorePasses()
@@ -263,7 +267,7 @@ namespace SkyRoof
       if (satellite == null) return null;
 
       var now = DateTime.UtcNow;
-      return ComputePassesFor(satellite, now, now.AddDays(1)).OrderBy(pass => pass.StartTime).FirstOrDefault();
+      return ComputePassesFor(satellite, now, now.AddDays(2)).OrderBy(pass => pass.StartTime).FirstOrDefault();
     }
 
     // the pass in progress if there is one, otherwise the next one. GetNextPass cannot answer this near LOS:
