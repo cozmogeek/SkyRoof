@@ -22,11 +22,15 @@ namespace SkyRoof
     private readonly ToolTip minElToolTip = new();
     private readonly ToolTip listColumnToolTip = new();
     private readonly MiniSkyPopup skyMapPopup = new();
+    private readonly TransmitterTipPopup transmitterPopup = new();
     private readonly System.Windows.Forms.Timer nextPassTimer = new();
     private readonly System.Windows.Forms.Timer minElSaveTimer = new() { Interval = 400 };
     private readonly System.Windows.Forms.Timer skyMapTimer = new() { Interval = 400 };
+    private readonly System.Windows.Forms.Timer transmitterTimer = new() { Interval = 400 };
     private ListViewItem? skyHoverItem;
     private SatellitePass? skyHoverPass;
+    private ListViewItem? transmitterHoverItem;
+    private SatnogsDbTransmitter? transmitterHoverTx;
     private int? DragSourceIndex;
     private bool refreshingList;
     private bool refreshingPresets;
@@ -41,6 +45,7 @@ namespace SkyRoof
       "Automatically track this satellite with the rotator starting 30 seconds before the pass";
     private const int SatelliteColumnIndex = 1;
     private const int SatelliteColumnMaxWidth = 240;
+    private const int TransmitterColumnIndex = 2;
     private const int NextColumnIndex = 3;
     private const int MaxColumnIndex = 4;
     private const int AudioColumnIndex = 5;
@@ -72,6 +77,7 @@ namespace SkyRoof
       };
 
       skyMapTimer.Tick += SkyMapTimer_Tick;
+      transmitterTimer.Tick += TransmitterTimer_Tick;
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
@@ -83,8 +89,12 @@ namespace SkyRoof
       minElSaveTimer.Dispose();
       skyMapTimer.Stop();
       skyMapTimer.Dispose();
+      transmitterTimer.Stop();
+      transmitterTimer.Dispose();
       HideSkyMapPopup();
+      HideTransmitterPopup();
       skyMapPopup.Dispose();
+      transmitterPopup.Dispose();
       minElToolTip.Dispose();
       listColumnToolTip.Dispose();
       ctx.Settings.Ui.SaveColumnWidths("MonitoredSatellitesPanel", listView);
@@ -307,6 +317,7 @@ namespace SkyRoof
       if (IsDisposed) return;
 
       HideSkyMapPopup();
+      HideTransmitterPopup();
       nextPassTimer.Stop();
       refreshingList = true;
       listView.BeginUpdate();
@@ -477,12 +488,20 @@ namespace SkyRoof
     {
       if (TryHoverSkyMap(e.Location))
       {
-        if (listColumnToolTip.GetToolTip(listView) != "")
-          listColumnToolTip.SetToolTip(listView, "");
+        HideTransmitterPopup();
+        ClearListColumnToolTip();
+        return;
+      }
+
+      if (TryHoverTransmitter(e.Location))
+      {
+        HideSkyMapPopup();
+        ClearListColumnToolTip();
         return;
       }
 
       HideSkyMapPopup();
+      HideTransmitterPopup();
       string tip = GetColumnToolTip(e.Location);
       if (listColumnToolTip.GetToolTip(listView) != tip)
         listColumnToolTip.SetToolTip(listView, tip);
@@ -491,41 +510,82 @@ namespace SkyRoof
     private void ListView_MouseLeave(object? sender, EventArgs e)
     {
       HideSkyMapPopup();
+      HideTransmitterPopup();
       listColumnToolTip.SetToolTip(listView, "");
+    }
+
+    private void ClearListColumnToolTip()
+    {
+      if (listColumnToolTip.GetToolTip(listView) != "")
+        listColumnToolTip.SetToolTip(listView, "");
     }
 
     // true when the pointer is on a Max cell that has a current or next pass to plot
     private bool TryHoverSkyMap(Point location)
     {
-      if (IsOverColumnHeader(location)) return false;
-
-      var hit = listView.HitTest(location);
-      if (hit.Item == null || hit.SubItem == null) return false;
-      int col = hit.Item.SubItems.IndexOf(hit.SubItem);
-      if (col != MaxColumnIndex) return false;
-      if (!hit.SubItem.Bounds.Contains(location)) return false;
-      if (hit.Item.Tag is not MonitoredSatelliteEntry entry) return false;
+      if (!TryHitDataCell(location, MaxColumnIndex, out var item, out var subItem)) return false;
+      if (item.Tag is not MonitoredSatelliteEntry entry) return false;
 
       var pass = PassForEntry(entry);
       if (pass == null) return false;
 
-      if (skyHoverItem == hit.Item && ReferenceEquals(skyHoverPass, pass))
+      if (skyHoverItem == item && ReferenceEquals(skyHoverPass, pass))
       {
         if (skyMapPopup.Visible) return true;
         if (!skyMapTimer.Enabled) skyMapTimer.Start();
         return true;
       }
 
-      skyHoverItem = hit.Item;
+      skyHoverItem = item;
       skyHoverPass = pass;
       if (skyMapPopup.Visible)
-        ShowSkyMapPopup(pass, hit.SubItem.Bounds);
+        ShowSkyMapPopup(pass, subItem.Bounds);
       else
       {
         skyMapTimer.Stop();
         skyMapTimer.Start();
       }
       return true;
+    }
+
+    // true when the pointer is on a Transmitter cell that has a SatNOGS transmitter to describe
+    private bool TryHoverTransmitter(Point location)
+    {
+      if (!TryHitDataCell(location, TransmitterColumnIndex, out var item, out var subItem)) return false;
+      if (item.Tag is not MonitoredSatelliteEntry entry) return false;
+
+      var tx = TransmitterForEntry(entry);
+      if (tx == null) return false;
+
+      if (transmitterHoverItem == item && ReferenceEquals(transmitterHoverTx, tx))
+      {
+        if (transmitterPopup.Visible) return true;
+        if (!transmitterTimer.Enabled) transmitterTimer.Start();
+        return true;
+      }
+
+      transmitterHoverItem = item;
+      transmitterHoverTx = tx;
+      if (transmitterPopup.Visible)
+        ShowTransmitterPopup(tx, subItem.Bounds);
+      else
+      {
+        transmitterTimer.Stop();
+        transmitterTimer.Start();
+      }
+      return true;
+    }
+
+    private bool TryHitDataCell(Point location, int column, out ListViewItem item, out ListViewItem.ListViewSubItem subItem)
+    {
+      var hit = listView.HitTest(location);
+      item = hit.Item!;
+      subItem = hit.SubItem!;
+      if (IsOverColumnHeader(location)) return false;
+      if (hit.Item == null || hit.SubItem == null) return false;
+      int col = hit.Item.SubItems.IndexOf(hit.SubItem);
+      if (col != column) return false;
+      return hit.SubItem.Bounds.Contains(location);
     }
 
     private void SkyMapTimer_Tick(object? sender, EventArgs e)
@@ -555,6 +615,54 @@ namespace SkyRoof
       skyHoverItem = null;
       skyHoverPass = null;
       if (skyMapPopup.Visible) skyMapPopup.Hide();
+    }
+
+    private void TransmitterTimer_Tick(object? sender, EventArgs e)
+    {
+      transmitterTimer.Stop();
+      if (transmitterHoverItem == null || transmitterHoverTx == null) return;
+      if (transmitterHoverItem.ListView != listView) return;
+      ShowTransmitterPopup(transmitterHoverTx, transmitterHoverItem.SubItems[TransmitterColumnIndex].Bounds);
+    }
+
+    private void ShowTransmitterPopup(SatnogsDbTransmitter tx, Rectangle cell)
+    {
+      string details = tx.GetTooltipText();
+      if (string.IsNullOrWhiteSpace(details)) return;
+
+      var size = transmitterPopup.Measure(details);
+      var screen = listView.PointToScreen(new Point(cell.Right + 4, cell.Top));
+      var area = Screen.FromControl(listView).WorkingArea;
+      if (size.Width > area.Width) size.Width = area.Width;
+      if (size.Height > area.Height) size.Height = area.Height;
+      transmitterPopup.Size = size;
+      if (screen.X + size.Width > area.Right)
+        screen.X = listView.PointToScreen(cell.Location).X - size.Width - 4;
+      if (screen.X < area.Left) screen.X = area.Left;
+      if (screen.Y + size.Height > area.Bottom)
+        screen.Y = area.Bottom - size.Height;
+      if (screen.Y < area.Top) screen.Y = area.Top;
+      transmitterPopup.ShowText(this, screen);
+    }
+
+    private void HideTransmitterPopup()
+    {
+      transmitterTimer.Stop();
+      transmitterHoverItem = null;
+      transmitterHoverTx = null;
+      if (transmitterPopup.Visible) transmitterPopup.Hide();
+    }
+
+    private SatnogsDbTransmitter? TransmitterForEntry(MonitoredSatelliteEntry entry)
+    {
+      var sat = ctx.SatnogsDb?.GetSatellite(entry.SatelliteId);
+      if (sat == null) return null;
+      if (!string.IsNullOrEmpty(entry.TransmitterId))
+      {
+        var tx = sat.Transmitters.FirstOrDefault(t => t.uuid == entry.TransmitterId);
+        if (tx != null) return tx;
+      }
+      return sat.Transmitters.FirstOrDefault();
     }
 
     private SatellitePass? PassForEntry(MonitoredSatelliteEntry entry)
@@ -844,6 +952,65 @@ namespace SkyRoof
         e.Graphics.Clear(BackColor);
         ControlPaint.DrawBorder(e.Graphics, ClientRectangle, SystemColors.WindowFrame, ButtonBorderStyle.Solid);
         pass?.DrawMiniSkyView(e.Graphics, new RectangleF(4, 4, Width - 8, Height - 8));
+      }
+    }
+
+    // same mouse-pass-through host as MiniSkyPopup, showing the SatNOGS transmitter tooltip text
+    private sealed class TransmitterTipPopup : Form
+    {
+      private const int Pad = 8;
+      private const int MaxWidth = 480;
+      private const int WsExNoActivate = 0x08000000;
+      private const int WsExToolWindow = 0x00000080;
+      private const int WsExTransparent = 0x00000020;
+      private static readonly TextFormatFlags TextFlags =
+        TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding |
+        TextFormatFlags.WordBreak;
+      private string text = "";
+
+      public TransmitterTipPopup()
+      {
+        FormBorderStyle = FormBorderStyle.None;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.Manual;
+        BackColor = Theme.TipBack;
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+      }
+
+      protected override bool ShowWithoutActivation => true;
+
+      protected override CreateParams CreateParams
+      {
+        get
+        {
+          var cp = base.CreateParams;
+          cp.ExStyle |= WsExNoActivate | WsExToolWindow | WsExTransparent;
+          return cp;
+        }
+      }
+
+      public Size Measure(string details)
+      {
+        text = details;
+        var measured = TextRenderer.MeasureText(text, SystemFonts.StatusFont, new Size(MaxWidth, int.MaxValue), TextFlags);
+        Size = new Size(measured.Width + Pad * 2, measured.Height + Pad * 2);
+        return Size;
+      }
+
+      public void ShowText(IWin32Window owner, Point screenLocation)
+      {
+        Location = screenLocation;
+        Invalidate();
+        if (!Visible) Show(owner);
+      }
+
+      protected override void OnPaint(PaintEventArgs e)
+      {
+        e.Graphics.Clear(Theme.TipBack);
+        ControlPaint.DrawBorder(e.Graphics, ClientRectangle, SystemColors.WindowFrame, ButtonBorderStyle.Solid);
+        TextRenderer.DrawText(e.Graphics, text, SystemFonts.StatusFont,
+          new Rectangle(Pad, Pad, Width - Pad * 2, Height - Pad * 2),
+          Theme.TipText, TextFlags);
       }
     }
   }
