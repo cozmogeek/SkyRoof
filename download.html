@@ -37,13 +37,6 @@
         document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
       </script>
 
-      <script async src="https://www.googletagmanager.com/gtag/js?id=G-1MMW827H44"></script>
-      <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag() { dataLayer.push(arguments); }
-        gtag('js', new Date());
-        gtag('config', 'G-1MMW827H44');
-      </script>
   </head>
 
   <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
@@ -82,12 +75,45 @@
 
 <br>
 <h3 id="current-version">Current Version</h3>
-<p><a href="https://github.com/VE3NEA/SkyRoof/releases/download/v.1.54/SkyRoofSetup-v.1.54.exe">SkyRoof v.1.54</a></p>
+<p><a href="https://github.com/VE3NEA/SkyRoof/releases/download/v.1.60/SkyRoofSetup-v.1.60.exe">SkyRoof v.1.60</a></p>
 <br>
 <h3 id="previous-versions">Previous Versions</h3>
 <p>See <a href="https://github.com/VE3NEA/SkyRoof/releases">All Releases</a></p>
 <br>
 <h3 id="release-notes">Release Notes</h3>
+<h4 id="v160">v.1.60</h4>
+<ul>
+<li>CAT control of 10m (29.0-29.7 MHz) uplinks and downlinks</li>
+<li>10m satellites included in the ham satellite passes</li>
+<li>support of the new Alpha-5 catalog numbers, used by satellites such as UNNE-1B</li>
+<li>fixed SDR passes listing satellites that have no downlink within the SDR frequency range</li>
+</ul>
+<h4 id="v159">v.1.59</h4>
+<ul>
+<li>added support of PlutoSDR</li>
+<li>RTL-SDR driver updated, adds support of RTL-SDR Blog V4L</li>
+<li>fixed a crash in the Current Group panel</li>
+</ul>
+<h4 id="v158">v.1.58</h4>
+<ul>
+<li>AMSAT satellite status via the new AMSAT Satellite Status API</li>
+</ul>
+<h4 id="v157">v.1.57</h4>
+<ul>
+<li>FT4 Console: nonstandard callsigns, such as VE3NEA/MM, use the WSJT-X message formats</li>
+<li>fixed a crash when the remote SoapySDR server restarts</li>
+<li>groups and satellites sorted in the Satellite Groups dialog</li>
+</ul>
+<h4 id="v156">v.1.56</h4>
+<ul>
+<li>support of SSDV format used by AO-123</li>
+<li>user-selected default SSTV filter: None, Wiener, or NLM</li>
+</ul>
+<h4 id="v155">v.1.55</h4>
+<ul>
+<li>QSO structure updated for interface with ACLog by Keith KV5J</li>
+<li>Auto Selection tunes to next satellite 30 s after LOS</li>
+</ul>
 <h4 id="v154">v.1.54</h4>
 <ul>
 <li>added support of LimeSDR - TNX Daniel M1KKL</li>

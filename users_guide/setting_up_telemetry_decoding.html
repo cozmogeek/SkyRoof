@@ -37,13 +37,6 @@
         document.documentElement.setAttribute('data-bs-theme', theme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : theme)
       </script>
 
-      <script async src="https://www.googletagmanager.com/gtag/js?id=G-1MMW827H44"></script>
-      <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag() { dataLayer.push(arguments); }
-        gtag('js', new Date());
-        gtag('config', 'G-1MMW827H44');
-      </script>
   </head>
 
   <body class="tex2jax_ignore" data-layout="" data-yaml-mime="">
@@ -106,6 +99,10 @@ server, and uploading them to the SatNOGS database.</p>
 <code>TelemetryDecodes</code> subfolder of the <a href="data_folder.html">data folder</a>. The file contains the same
 information that is shown in the panel: the time, satellite, transmitter, frame length and address,
 the decoded telemetry, and the ASCII, HEX and META views of the frame.</p>
+</li>
+<li><p><strong>SSTV Auto-Save Filter</strong> — the denoising filter applied to a finalized SSTV image before it is
+saved automatically and shown in the panel: <strong>None</strong>, <strong>Wiener</strong> (the default), or <strong>Non-local
+means</strong>. See <a href="recevie_sstv.html#saved-images">Receive SSTV Images</a>.</p>
 </li>
 <li><p><strong>KISS Server</strong> — makes the decoded frames available to other telemetry software over a
 KISS-over-TCP server:</p>
