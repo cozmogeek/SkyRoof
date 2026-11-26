@@ -38,7 +38,13 @@ namespace SkyRoof
       if (tle == null) return null;
       try
       {
-        return new Tle(tle.tle0, NumericCatalogLine(tle.tle1), NumericCatalogLine(tle.tle2));
+        // SGP.NET accepts only digits in the catalog number field, so an Alpha-5 number
+        // (e.g. A1101 = 101101) is replaced with 00000; Tle.NoradNumber is then 0
+        string line1 = tle.tle1, line2 = tle.tle2;
+        if (line1.Length > 2 && char.IsLetter(line1[2])) line1 = "1 00000" + line1.Substring(7);
+        if (line2.Length > 2 && char.IsLetter(line2[2])) line2 = "2 00000" + line2.Substring(7);
+
+        return new Tle(tle.tle0, line1, line2);
       }
       catch (Exception ex)
       {
@@ -47,49 +53,19 @@ namespace SkyRoof
       }
     }
 
-    private static string NumericCatalogLine(string line)
+    // decodes a 5-character TLE catalog number, including the Alpha-5 format
+    // where the first character is a letter A..Z, skipping I and O, standing for 10..33
+    public static int ParseCatalogNumber(string field)
     {
-      if (string.IsNullOrEmpty(line) || line.Length < 7) return line;
+      field = field.Trim();
+      char first = char.ToUpperInvariant(field[0]);
+      if (!char.IsLetter(first)) return int.Parse(field, System.Globalization.CultureInfo.InvariantCulture);
 
-      string field = line.Substring(2, 5);
-      if (field.All(char.IsDigit)) return line;
-      if (!TryDecodeAlpha5(field, out int norad)) return line;
-
-      var chars = (line.Length >= 69 ? line : line.PadRight(69)).ToCharArray();
-      (norad % 100000).ToString("00000").CopyTo(0, chars, 2, 5);
-      chars[68] = (char)('0' + TleChecksum(chars));
-      return new string(chars, 0, 69);
-    }
-
-    // Celestrak Alpha-5: first character A=10 … Z=33, skipping I and O
-    internal static bool TryDecodeAlpha5(string field, out int norad)
-    {
-      norad = 0;
-      if (string.IsNullOrWhiteSpace(field) || field.Length != 5) return false;
-
-      char c = char.ToUpperInvariant(field[0]);
-      int high;
-      if (c is >= '0' and <= '9') high = c - '0';
-      else if (c is >= 'A' and <= 'H') high = c - 'A' + 10;
-      else if (c is >= 'J' and <= 'N') high = c - 'J' + 18;
-      else if (c is >= 'P' and <= 'Z') high = c - 'P' + 23;
-      else return false;
-
-      if (!int.TryParse(field.AsSpan(1, 4), out int rest)) return false;
-      norad = high * 10000 + rest;
-      return true;
-    }
-
-    private static int TleChecksum(char[] line)
-    {
-      int sum = 0;
-      for (int i = 0; i < 68 && i < line.Length; i++)
-      {
-        char c = line[i];
-        if (c is >= '0' and <= '9') sum += c - '0';
-        else if (c == '-') sum += 1;
-      }
-      return sum % 10;
+      if (first == 'I' || first == 'O') throw new FormatException($"Invalid Alpha-5 catalog number: {field}");
+      int prefix = first - 'A' + 10;
+      if (first > 'I') prefix--;
+      if (first > 'O') prefix--;
+      return prefix * 10000 + int.Parse(field.Substring(1), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     public GeodeticCoordinate? Predict(DateTime? utc = null)

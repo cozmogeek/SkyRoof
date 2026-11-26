@@ -47,12 +47,7 @@ namespace SkyRoof
     internal string GetBandName(bool uplink)
     {
       var freq = uplink ? RadioLink.CorrectedUplinkFrequency : RadioLink.CorrectedDownlinkFrequency;
-      if (SatnogsDbTransmitter.IsUhfFrequency(freq))
-        return "70cm";
-      else if (SatnogsDbTransmitter.IsVhfFrequency(freq))
-        return "2m";
-      else
-        return string.Empty;
+      return SatnogsDbTransmitter.GetBandName(freq);
     }
 
 
@@ -670,6 +665,8 @@ namespace SkyRoof
         DownlinkFrequencyLabel.ForeColor = bright ? Color.Cyan : Color.Teal;
       else if (SatnogsDbTransmitter.IsVhfFrequency(RadioLink.DownlinkFrequency))
         DownlinkFrequencyLabel.ForeColor = bright ? Color.Yellow : Color.Olive;
+      else if (SatnogsDbTransmitter.IsHfFrequency(RadioLink.DownlinkFrequency))
+        DownlinkFrequencyLabel.ForeColor = bright ? Color.Magenta : Color.FromArgb(0xB0, 0x00, 0xB0);
       else
         DownlinkFrequencyLabel.ForeColor = bright ? Color.White : Color.Gray;
       toolTip1.SetToolTip(DownlinkFrequencyLabel, MakeDownlinkTooltip());
@@ -682,6 +679,8 @@ namespace SkyRoof
         UplinkFrequencyLabel.ForeColor = bright ? Color.Cyan : Color.Teal;
       else if (RadioLink.Tx!.IsVhf((long)RadioLink.UplinkFrequency))
         UplinkFrequencyLabel.ForeColor = bright ? Color.Yellow : Color.Olive;
+      else if (SatnogsDbTransmitter.IsHfFrequency(RadioLink.UplinkFrequency))
+        UplinkFrequencyLabel.ForeColor = bright ? Color.Magenta : Color.FromArgb(0xB0, 0x00, 0xB0);
       else
         UplinkFrequencyLabel.ForeColor = bright ? Color.White : Color.Gray;
       toolTip1.SetToolTip(UplinkFrequencyLabel, MakeUplinkTooltip());
