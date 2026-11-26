@@ -202,9 +202,9 @@ namespace SkyRoof
       tracker = null;
       if (tle.norad_cat_id is int norad)
         norad_cat_id = norad;
-      else if (tle.tle1 != null && tle.tle1.Length >= 7
-        && SatelliteTracker.TryDecodeAlpha5(tle.tle1.Substring(2, 5), out int fromLine))
-        norad_cat_id = fromLine;
+      else if (tle.tle1 != null && tle.tle1.Length >= 7)
+        try { norad_cat_id = SatelliteTracker.ParseCatalogNumber(tle.tle1.Substring(2, 5)); }
+        catch (Exception) { }
     }
 
 
